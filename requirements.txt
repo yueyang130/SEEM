@@ -1,0 +1,12 @@
+joblib
+gtimer
+d4rl
+wandb
+flax
+distrax
+scikit-image>=0.19.1
+tqdm>=4.62.3
+seaborn>=0.11.2
+box2d>=2.3.10
+mujoco_py>=2.0.2.13
+pygame>=2.1.2
