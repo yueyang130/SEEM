@@ -32,7 +32,8 @@ and simply navigate to [http://localhost:5000/](http://localhost:5000/)
 
 
 ## Weights and Biases Online Visualization Integration
-This codebase can also log to [W&B online visualization platform](https://wandb.ai/site). To log to W&B, you first need to set your W&B API key environment variable:
+This codebase can also log to [W&B online visualization platform](https://wandb.ai/site). To log to W&B, you first need to set your W&B API key environment variable.
+Alternatively, you could simply run `wandb login`.
 Then you can run experiments with W&B logging turned on:
 ```
 python -m experiments.conservative_sac_main --env 'hopper-medium-v2' --logging.output_dir './experiment_output' --logging.online
