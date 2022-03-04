@@ -35,10 +35,7 @@ and simply navigate to [http://localhost:5000/](http://localhost:5000/)
 This codebase can also log to [W&B online visualization platform](https://wandb.ai/site). To log to W&B, you first need to set your W&B API key environment variable:
 Then you can run experiments with W&B logging turned on:
 ```
-python -m JaxCQL.conservative_sac_main \
-    --env 'halfcheetah-medium-v0' \
-    --logging.output_dir './experiment_output' \
-    --logging.online
+python -m experiments.conservative_sac_main --env 'halfcheetah-medium-v0' --logging.output_dir './experiment_output' --logging.online
 ```
 
 ## Credits
