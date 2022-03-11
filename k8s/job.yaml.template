@@ -1,7 +1,9 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  generateName: "%USER-job-"
+  generateName: "offline-rl-%USER-job-"
+  labels:
+    estimated-running-time: "24h"
 spec:
   # time to clear the job after a job is finished (completed / failed)
   ttlSecondsAfterFinished: 172800
