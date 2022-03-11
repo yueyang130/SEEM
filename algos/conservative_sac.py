@@ -18,6 +18,7 @@ class ConservativeSAC(object):
   @staticmethod
   def get_default_config(updates=None):
     config = ConfigDict()
+    config.nstep = 1
     config.discount = 0.99
     config.alpha_multiplier = 1.0
     config.use_automatic_entropy_tuning = True
@@ -205,8 +206,9 @@ class ConservativeSAC(object):
       if self.config.backup_entropy:
         target_q_values = target_q_values - alpha * next_log_pi
 
+      discount = self.config.discount**self.config.nstep
       td_target = jax.lax.stop_gradient(
-        rewards + (1. - dones) * self.config.discount * target_q_values
+        rewards + (1. - dones) * discount * target_q_values
       )
       qf1_loss = mse_loss(q1_pred, td_target)
       qf2_loss = mse_loss(q2_pred, td_target)

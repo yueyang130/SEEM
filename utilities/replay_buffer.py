@@ -1,6 +1,8 @@
 import d4rl
 import numpy as np
 
+from utilities.traj_dataset import get_nstep_dataset
+
 
 class ReplayBuffer(object):
 
@@ -100,8 +102,11 @@ class ReplayBuffer(object):
     )
 
 
-def get_d4rl_dataset(env):
-  dataset = d4rl.qlearning_dataset(env)
+def get_d4rl_dataset(env, nstep=1, gamma=0.9):
+  if nstep == 1:
+    dataset = d4rl.qlearning_dataset(env)
+  else:
+    dataset = get_nstep_dataset(env, nstep, gamma)
   return dict(
     observations=dataset['observations'],
     actions=dataset['actions'],

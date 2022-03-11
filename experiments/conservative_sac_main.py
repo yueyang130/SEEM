@@ -65,7 +65,11 @@ def main(argv):
   eval_sampler = TrajSampler(
     gym.make(FLAGS.env).unwrapped, FLAGS.max_traj_length
   )
-  dataset = get_d4rl_dataset(eval_sampler.env)
+  dataset = get_d4rl_dataset(
+    eval_sampler.env,
+    FLAGS.cql.nstep,
+    FLAGS.cql.discount,
+  )
   dataset['rewards'
          ] = dataset['rewards'] * FLAGS.reward_scale + FLAGS.reward_bias
   dataset['actions'] = np.clip(
