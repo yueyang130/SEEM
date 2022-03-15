@@ -15,7 +15,7 @@ from utilities.replay_buffer import get_d4rl_dataset, subsample_batch
 from utilities.sampler import TrajSampler
 from utilities.utils import (
   Timer,
-  WandBLogger,
+  SOTALogger,
   define_flags_with_default,
   get_user_flags,
   prefix_metrics,
@@ -43,7 +43,7 @@ FLAGS_DEF = define_flags_with_default(
   eval_period=10,
   eval_n_trajs=5,
   cql=ConservativeSAC.get_default_config(),
-  logging=WandBLogger.get_default_config(),
+  logging=SOTALogger.get_default_config(),
 )
 
 
@@ -51,10 +51,10 @@ def main(argv):
   FLAGS = absl.flags.FLAGS
 
   variant = get_user_flags(FLAGS, FLAGS_DEF)
-  wandb_logger = WandBLogger(config=FLAGS.logging, variant=variant)
+  sota_logger = SOTALogger(config=FLAGS.logging, variant=variant, env_name=FLAGS.env)
   setup_logger(
     variant=variant,
-    exp_id=wandb_logger.experiment_id,
+    exp_id=sota_logger.experiment_id,
     seed=FLAGS.seed,
     base_log_dir=FLAGS.logging.output_dir,
     include_exp_prefix_sub_dir=False
@@ -127,19 +127,19 @@ def main(argv):
         )
         if FLAGS.save_model:
           save_data = {'sac': sac, 'variant': variant, 'epoch': epoch}
-          wandb_logger.save_pickle(save_data, 'model.pkl')
+          sota_logger.save_pickle(save_data, 'model.pkl')
 
     metrics['train_time'] = train_timer()
     metrics['eval_time'] = eval_timer()
     metrics['epoch_time'] = train_timer() + eval_timer()
-    wandb_logger.log(metrics)
+    sota_logger.log(metrics)
     viskit_metrics.update(metrics)
     logger.record_dict(viskit_metrics)
     logger.dump_tabular(with_prefix=False, with_timestamp=False)
 
   if FLAGS.save_model:
     save_data = {'sac': sac, 'variant': variant, 'epoch': epoch}
-    wandb_logger.save_pickle(save_data, 'model.pkl')
+    sota_logger.save_pickle(save_data, 'model.pkl')
 
 
 if __name__ == '__main__':
