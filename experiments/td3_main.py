@@ -1,15 +1,18 @@
 import absl.app
 import absl.flags
+from cv2 import normalize
 
 # import d4rl  # type: ignore
 import gym
 import numpy as np
 
-from algos.conservative_sac import ConservativeSAC
+from algos.td3 import TD3
 from algos.model import (
-  FullyConnectedQFunction,
+  # FullyConnectedQFunction,
+  DirectMappingPolicy,
+  TD3Critic,
   SamplerPolicy,
-  TanhGaussianPolicy,
+  # TanhGaussianPolicy,
 )
 from data import Dataset, RandSampler, SlidingWindowSampler
 from utilities.jax_utils import batch_to_jax
@@ -40,18 +43,17 @@ FLAGS_DEF = define_flags_with_default(
   policy_arch='256-256',
   qf_arch='256-256',
   orthogonal_init=False,
-  policy_log_std_multiplier=1.0,
-  policy_log_std_offset=-1.0,
   n_epochs=2000,
-  bc_epochs=0,
+  # bc_epochs=0, # unused
   n_train_step_per_epoch=1000,
   eval_period=10,
   eval_n_trajs=5,
   # configs for trining scheme
   online=False,  # use online training
   window_size=3000,  # window size for online sampler
-  cql=ConservativeSAC.get_default_config(),
-  logging=SOTALogger.get_default_config(),
+  normalize=True,
+  td3=TD3.get_default_config(),
+  logging=SOTALogger.get_default_config(dict(project='td3')),
 )
 
 
@@ -79,9 +81,15 @@ def main(argv):
   # Build dataset and sampler
   dataset = get_d4rl_dataset(
     eval_sampler.env,
-    FLAGS.cql.nstep,
-    FLAGS.cql.discount,
+    FLAGS.td3.nstep,
+    FLAGS.td3.discount,
   )
+  if FLAGS.normalize:
+    mean, std = dataset['observations'].mean(), dataset['observations'].std()
+    dataset['observations'] = (dataset['observations'] - mean) / std
+    dataset['next_observations'] = (dataset['next_observations'] - mean) / std
+  else:
+    mean, std = 0, 1
   dataset['rewards'
          ] = dataset['rewards'] * FLAGS.reward_scale + FLAGS.reward_bias
   dataset['actions'] = np.clip(
@@ -102,20 +110,21 @@ def main(argv):
   observation_dim = eval_sampler.env.observation_space.shape[0]
   action_dim = eval_sampler.env.action_space.shape[0]
 
-  policy = TanhGaussianPolicy(
-    observation_dim, action_dim, FLAGS.policy_arch, FLAGS.orthogonal_init,
-    FLAGS.policy_log_std_multiplier, FLAGS.policy_log_std_offset
+  policy = DirectMappingPolicy(
+    observation_dim,
+    action_dim,
+    eval_sampler.env.action_space.high[0],
+    FLAGS.policy_arch,
+    FLAGS.orthogonal_init,
   )
-  qf = FullyConnectedQFunction(
+  qf = TD3Critic(
     observation_dim, action_dim, FLAGS.qf_arch, FLAGS.orthogonal_init
   )
 
-  if FLAGS.cql.target_entropy >= 0.0:
-    FLAGS.cql.target_entropy = -np.prod(eval_sampler.env.action_space.shape
-                                       ).item()
-
-  sac = ConservativeSAC(FLAGS.cql, policy, qf)
-  sampler_policy = SamplerPolicy(sac.policy, sac.train_params['policy'])
+  td3 = TD3(FLAGS.td3, policy, qf)
+  sampler_policy = SamplerPolicy(
+    td3.actor, td3.train_params['actor'], mean, std
+  )
 
   viskit_metrics = {}
   for epoch in range(FLAGS.n_epochs):
@@ -124,16 +133,13 @@ def main(argv):
     with Timer() as train_timer:
       for _ in range(FLAGS.n_train_step_per_epoch):
         # batch = batch_to_jax(subsample_batch(dataset, FLAGS.batch_size))
-        print(_)
         batch = batch_to_jax(dataset.sample())
-        metrics.update(
-          prefix_metrics(sac.train(batch, bc=epoch < FLAGS.bc_epochs), 'sac')
-        )
+        metrics.update(prefix_metrics(td3.train(batch), 'td3'))
 
     with Timer() as eval_timer:
       if epoch == 0 or (epoch + 1) % FLAGS.eval_period == 0:
         trajs = eval_sampler.sample(
-          sampler_policy.update_params(sac.train_params['policy']),
+          sampler_policy.update_params(td3.train_params['actor']),
           FLAGS.eval_n_trajs,
           deterministic=True
         )
@@ -151,7 +157,7 @@ def main(argv):
           ]
         )
         if FLAGS.save_model:
-          save_data = {'sac': sac, 'variant': variant, 'epoch': epoch}
+          save_data = {'sac': td3, 'variant': variant, 'epoch': epoch}
           sota_logger.save_pickle(save_data, 'model.pkl')
 
     metrics['train_time'] = train_timer()
@@ -163,7 +169,7 @@ def main(argv):
     logger.dump_tabular(with_prefix=False, with_timestamp=False)
 
   if FLAGS.save_model:
-    save_data = {'sac': sac, 'variant': variant, 'epoch': epoch}
+    save_data = {'sac': td3, 'variant': variant, 'epoch': epoch}
     sota_logger.save_pickle(save_data, 'model.pkl')
 
 

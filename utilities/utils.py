@@ -10,6 +10,7 @@ from socket import gethostname
 import absl.flags
 import cloudpickle as pickle
 import numpy as np
+import sota
 import wandb
 from absl import logging
 from ml_collections import ConfigDict
@@ -17,7 +18,6 @@ from ml_collections.config_dict import config_dict
 from ml_collections.config_flags import config_flags
 
 from utilities.jax_utils import init_rng
-import sota
 
 
 class Timer(object):
@@ -60,7 +60,9 @@ class SOTALogger(object):
     self.config = self.get_default_config(config)
 
     if self.config.experiment_id is None:
-      self.config.experiment_id = sota.generate_experiment_name(self.config.project)
+      self.config.experiment_id = sota.generate_experiment_name(
+        self.config.project
+      )
 
     if self.config.prefix != '':
       self.config.project = '{}--{}'.format(
@@ -129,7 +131,7 @@ class WandBLogger(object):
     config.online = False
     config.prefix = 'JaxCQL'
     config.project = 'sac'
-    config.output_dir = '/tmp/JaxCQL'
+    config.output_dir = './experiment_output'
     config.random_delay = 0.0
     config.experiment_id = config_dict.placeholder(str)
     config.anonymous = config_dict.placeholder(str)
@@ -139,7 +141,7 @@ class WandBLogger(object):
       config.update(ConfigDict(updates).copy_and_resolve_references())
     return config
 
-  def __init__(self, config, variant):
+  def __init__(self, config, variant, env_name):
     self.config = self.get_default_config(config)
 
     if self.config.experiment_id is None:

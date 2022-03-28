@@ -157,9 +157,11 @@ class TanhGaussianPolicy(nn.Module):
 
 class SamplerPolicy(object):
 
-  def __init__(self, policy, params):
+  def __init__(self, policy, params, mean=0, std=1):
     self.policy = policy
     self.params = params
+    self.mean = mean
+    self.std = std
 
   def update_params(self, params):
     self.params = params
@@ -172,8 +174,59 @@ class SamplerPolicy(object):
     )
 
   def __call__(self, observations, deterministic=False):
-    actions, _ = self.act(
+    observations = (observations - self.mean) / self.std
+    actions = self.act(
       self.params, next_rng(), observations, deterministic=deterministic
     )
+    if isinstance(actions, tuple):
+      actions = actions[0]
     assert jnp.all(jnp.isfinite(actions))
     return jax.device_get(actions)
+
+
+class DirectMappingPolicy(nn.Module):
+  observation_dim: int
+  action_dim: int
+  max_action: int
+  arch: str = '256-256'
+  orthogonal_init: bool = False
+
+  def setup(self):
+    self.base_network = FullyConnectedNetwork(
+      output_dim=self.action_dim,
+      arch=self.arch,
+      orthogonal_init=self.orthogonal_init
+    )
+
+  def __call__(self, rng, observations, deterministic=True, repeat=None):
+    # `rng` and `deterministic` are ununsed parameters
+    if repeat is not None:
+      observations = extend_and_repeat(observations, 1, repeat)
+    action = self.base_network(observations)
+    return jnp.tanh(action) * self.max_action
+
+
+class TD3Critic(nn.Module):
+  observation_dim: int
+  action_dim: int
+  arch: str = '256-256'
+  orthogonal_init: bool = False
+
+  def setup(self):
+    self.q1 = FullyConnectedNetwork(output_dim=1, arch=self.arch)
+    self.q2 = FullyConnectedNetwork(output_dim=1, arch=self.arch)
+
+  @multiple_action_q_function
+  def __call__(self, observations, actions):
+    x = jnp.concatenate([observations, actions], axis=-1)
+    q1 = jnp.squeeze(self.q1(x), -1)
+    q2 = jnp.squeeze(self.q2(x), -1)
+
+    return q1, q2
+
+  @multiple_action_q_function
+  def q1(self, observations, actions):
+    x = jnp.concatenate([observations, actions], axis=-1)
+    q1 = jnp.squeeze(self.q1(x), -1)
+
+    return q1

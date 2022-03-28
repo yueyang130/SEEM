@@ -38,6 +38,8 @@ class ConservativeSAC(object):
     config.cql_max_target_backup = False
     config.cql_clip_diff_min = -np.inf
     config.cql_clip_diff_max = np.inf
+    config.bc_mode = 'mse'  # 'mle'
+    config.bc_weight = 0.
 
     if updates is not None:
       config.update(ConfigDict(updates).copy_and_resolve_references())
@@ -145,6 +147,21 @@ class ConservativeSAC(object):
         alpha_loss = 0.0
         alpha = self.config.alpha_multiplier
       """ Policy loss """
+      # get bc loss
+      if self.config.bc_mode == 'mle':
+        log_probs = self.policy.apply(
+          train_params['policy'],
+          observations,
+          actions,
+          method=self.policy.log_prob
+        )
+        bc_loss = (alpha * log_pi - log_probs).mean()
+      elif self.config.bc_mode == 'mse':
+        bc_loss = mse_loss(actions, new_actions)
+      else:
+        raise RuntimeError('{} not implemented!'.format(self.config.bc_mode))
+
+      # get (offline)rl loss
       if bc:
         log_probs = self.policy.apply(
           train_params['policy'],
@@ -152,15 +169,19 @@ class ConservativeSAC(object):
           actions,
           method=self.policy.log_prob
         )
-        policy_loss = (alpha * log_pi - log_probs).mean()
+        rl_loss = (alpha * log_pi - log_probs).mean()
       else:
         q_new_actions = jnp.minimum(
           self.qf.apply(train_params['qf1'], observations, new_actions),
           self.qf.apply(train_params['qf2'], observations, new_actions),
         )
-        policy_loss = (alpha * log_pi - q_new_actions).mean()
+        rl_loss = (alpha * log_pi - q_new_actions).mean()
 
+      # total loss for policy
+      policy_loss = rl_loss + self.config.bc_weight * bc_loss
       loss_collection['policy'] = policy_loss
+      loss_collection['bc_loss'] = bc_loss
+      loss_collection['rl_loss'] = rl_loss
       """ Q function loss """
       q1_pred = self.qf.apply(train_params['qf1'], observations, actions)
       q2_pred = self.qf.apply(train_params['qf2'], observations, actions)
@@ -213,7 +234,7 @@ class ConservativeSAC(object):
       qf1_loss = mse_loss(q1_pred, td_target)
       qf2_loss = mse_loss(q2_pred, td_target)
 
-      ### CQL
+      # CQL
       if self.config.use_cql:
         batch_size = actions.shape[0]
         rng, split_rng = jax.random.split(rng)
@@ -370,6 +391,8 @@ class ConservativeSAC(object):
     metrics = dict(
       log_pi=aux_values['log_pi'].mean(),
       policy_loss=aux_values['policy_loss'],
+      bc_loss=aux_values['bc_loss'],
+      rl_loss=aux_values['rl_loss'],
       qf1_loss=aux_values['qf1_loss'],
       qf2_loss=aux_values['qf2_loss'],
       alpha_loss=aux_values['alpha_loss'],

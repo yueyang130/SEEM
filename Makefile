@@ -67,6 +67,9 @@ k8s:
 submit-k8s:
 	./scripts/submit_job.sh
 
+run:
+	./scripts/create_job.sh $(cmd)
+
 # PyPI package release
 release:
 	$(call check_install, twine)

@@ -19,8 +19,22 @@ pip install -e .
 ## Run Experiments
 
 You can run CQL experiments using the following command:
-```
+```bash
 python -m experiments.conservative_sac_main --env 'hopper-medium-v2' --logging.output_dir './experiment_output'
+```
+
+Run TD3 + BC
+```bash
+python -m experiments.td3_main --env 'hopper-medium-v2'
+```
+
+## Spawn experiments on K8S
+```bash
+for env in halfcheetah hopper walker2d
+do
+  PRIORITY=high NS=game-ai make run cmd="python -m experiments.conservative_sac_main \
+    --env=${env}-medium-v2 --logging.output_dir=./experiment_output --logging.online
+done
 ```
 
 ## Visualize Experiments

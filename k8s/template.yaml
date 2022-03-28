@@ -1,0 +1,79 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  generateName: "offline-rl-%{USER}-job-"
+  labels:
+    estimated-running-time: "24h"
+spec:
+  # time to clear the job after a job is finished (completed / failed)
+  ttlSecondsAfterFinished: 172800
+  template:
+    spec:
+      priorityClassName: %{PRIORITY}
+      # maximum job runtime in seconds
+      activeDeadlineSeconds: 86400
+      # time for prestop command execution before a container is killed
+      terminationGracePeriodSeconds: 300
+
+      nodeSelector:
+        machine-groups: aiops-apollo
+
+      containers:
+      - name: "%{USER}-job"
+        # image: "harbor.seacloud.garenanow.com/%{USERNAME}/%{PROJECT}:%{DOCKER_TAG}"
+        image: "harbor.seacloud.garenanow.com/max/mujoco:d4rl"
+        imagePullPolicy: Always
+        volumeMounts:
+        # name need to match volume name below
+        - name: workspace-vol
+          mountPath: /workspace
+          readOnly: false
+        - name: dataset-vol
+          mountPath: /datasets
+          readOnly: false
+        - name: shm
+          mountPath: /dev/shm
+        command: ["/bin/bash"]
+        args: [
+          "-c", "cd /workspace/jaxoffrl; %{COMMAND}"
+        ]
+        # command: ["/bin/sh", "-c", "sleep 86400"]
+        env:
+        - name: SOTA_API_KEY
+          value: your_key
+        - name: WANDB_API_KEY
+          value: your_key
+        - name: LD_LIBRARY_PATH
+          value: /usr/local/lib/python3.8/dist-packages/cv2/../../lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/root/.mujoco/mujoco200/bin
+        resources:
+          limits:
+            cpu: "%{CPU}"
+            nvidia.com/gpu: "%{GPU}"
+            memory: "%{MEM}"
+          requests:
+            cpu: "%{CPU}"
+            nvidia.com/gpu: "%{GPU}"
+            memory: "%{MEM}"
+        lifecycle:
+          # tasks to execute before container exits (e.g. save checkpoints into job folder)
+          preStop:
+            exec:
+              # command:  ["/bin/sh", "-c", "./scripts/pre-stop.sh"]
+              command: ["/bin/sh","-c","echo prestophook triggered > /job-folder/presstophook"]
+
+      imagePullSecrets:
+      - name: regcred
+      restartPolicy: Never
+      volumes:
+      - name: workspace-vol
+        hostPath:
+          path: /mnt/home/%{USER}
+          type: Directory
+      - name: dataset-vol
+        hostPath:
+          path: /raid/common/
+          type: Directory
+      - name: shm
+        emptyDir:
+          medium: Memory
+  backoffLimit: 0

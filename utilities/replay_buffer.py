@@ -103,10 +103,11 @@ class ReplayBuffer(object):
 
 
 def get_d4rl_dataset(env, nstep=1, gamma=0.9):
-  if nstep == 1:
-    dataset = d4rl.qlearning_dataset(env)
-  else:
-    dataset = get_nstep_dataset(env, nstep, gamma)
+  # if nstep == 1:
+  #   dataset = d4rl.qlearning_dataset(env)
+  # else:
+  # Always sort the dataset according to trajectory return
+  dataset = get_nstep_dataset(env, nstep, gamma, sorting=True)
   return dict(
     observations=dataset['observations'],
     actions=dataset['actions'],

@@ -1,7 +1,6 @@
 """To be cleaned later."""
 
 import collections
-from typing import Optional
 
 import d4rl
 import gym
@@ -104,7 +103,7 @@ class D4RLDataset(Dataset):
     )
 
 
-def get_traj_dataset(env):
+def get_traj_dataset(env, sorting=True):
   env = gym.make(env) if isinstance(env, str) else env
   dataset = D4RLDataset(env)
   trajs = split_into_trajectories(
@@ -112,6 +111,17 @@ def get_traj_dataset(env):
     dataset.dones_float, dataset.next_observations
   )
 
+  def compute_returns(traj):
+    episode_return = 0
+    for _, _, rew, _, _, _ in traj:
+      episode_return += rew
+
+    return episode_return
+
+  if sorting:
+    trajs.sort(key=compute_returns)
+
+  # NOTE: this raw_dataset is not sorted
   return trajs, dataset.raw_dataset
 
 
@@ -121,24 +131,31 @@ def nstep_reward_prefix(rewards, nstep=5, gamma=0.9):
   return nstep_rewards
 
 
-def get_nstep_dataset(env, nstep=5, gamma=0.9):
+def get_nstep_dataset(env, nstep=5, gamma=0.9, sorting=True):
   gammas = np.array([gamma**i for i in range(nstep)])
-  trajs, dataset = get_traj_dataset(env)
+  trajs, raw_dataset = get_traj_dataset(env, sorting)
 
-  next_obss, nstep_rews = [], []
+  obss, acts, terms, next_obss, nstep_rews = [], [], [], [], []
   for traj in trajs:
     L = len(traj)
     rewards = np.array([ts[2] for ts in traj])
     cum_rewards = np.convolve(rewards, gammas)[nstep - 1:]
     nstep_rews.append(cum_rewards)
     next_obss.extend([traj[min(i + nstep - 1, L - 1)][-1] for i in range(L)])
-  nstep_rews = np.concatenate(nstep_rews)
-  next_obss = np.stack(next_obss)
+    obss.extend([traj[i][0] for i in range(L)])
+    acts.extend([traj[i][1] for i in range(L)])
+    terms.extend([bool(1 - traj[i][3]) for i in range(L)])
 
-  assert len(nstep_rews) == len(dataset['rewards'])
-  assert next_obss.shape == dataset['next_observations'].shape
-  dataset['rewards'] = nstep_rews
-  dataset['next_observations'] = next_obss
+  dataset = {}
+  dataset['observations'] = np.stack(obss)
+  dataset['actions'] = np.stack(acts)
+  dataset['next_observations'] = np.stack(next_obss)
+  dataset['rewards'] = np.concatenate(nstep_rews)
+  dataset['terminals'] = np.stack(terms)
+
+  assert len(dataset['rewards']) == len(raw_dataset['rewards'])
+  assert dataset['next_observations'].shape == raw_dataset['next_observations'
+                                                          ].shape
 
   return dataset
 
