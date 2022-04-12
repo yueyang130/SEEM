@@ -141,3 +141,6 @@ wandb
 .idea/
 .vscode/
 sota
+
+data/dm_control*
+data/dm_locomotion*

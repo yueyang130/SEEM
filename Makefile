@@ -70,6 +70,9 @@ submit-k8s:
 run:
 	./scripts/create_job.sh $(cmd)
 
+download:
+	./scripts/download_rl_unplugged.sh
+
 # PyPI package release
 release:
 	$(call check_install, twine)
