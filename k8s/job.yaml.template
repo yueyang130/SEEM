@@ -30,11 +30,11 @@ spec:
           requests:
             memory: "32Gi"
             cpu: "16"
-            nvidia.com/gpu: "2"
+            nvidia.com/gpu: "1"
           limits:
             memory: "64Gi"
             cpu: "32"
-            nvidia.com/gpu: "2"
+            nvidia.com/gpu: "1"
         volumeMounts:
           # name need to match volume name below
         - name: workspace-vol

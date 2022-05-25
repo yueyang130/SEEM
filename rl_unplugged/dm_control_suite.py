@@ -358,7 +358,7 @@ class ControlSuite:
     self._uint8_features = set([])
     self._environment = None
 
-    if task_name == 'swim':
+    if task_name == 'fish_swim':
       self._domain_name = 'fish'
       self._task_name = 'swim'
 

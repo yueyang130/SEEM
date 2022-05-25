@@ -33,7 +33,15 @@ python -m experiments.td3_main --env 'hopper-medium-v2'
 for env in halfcheetah hopper walker2d
 do
   PRIORITY=high NS=game-ai make run cmd="python -m experiments.conservative_sac_main \
-    --env=${env}-medium-v2 --logging.output_dir=./experiment_output --logging.online
+    --env=${env}-medium-v2 --logging.output_dir=./experiment_output --logging.online --dataset=d4rl --cql.use_cql=True "
+done
+```
+
+```bash
+for env in finger_turn_hard manipulator_insert_peg humanoid_run cartpole_swingup cheetah_run fish_swim manipulator_insert_ball walker_stand walker_walk
+do
+  PRIORITY=high NS=game-ai make run cmd="python -m experiments.conservative_sac_main \
+    --env=${env} --logging.output_dir=./experiment_output --logging.online --dataset=rl_unplugged --cql.use_cql=True"
 done
 ```
 
