@@ -11,7 +11,8 @@ from algos.model import (
   SamplerPolicy,
   TanhGaussianPolicy,
 )
-from data import Dataset, RandSampler, SlidingWindowSampler
+from data import Dataset, RandSampler, SlidingWindowSampler, RLUPDataset, DM2Gym
+import data
 from utilities.jax_utils import batch_to_jax
 from utilities.replay_buffer import get_d4rl_dataset
 from utilities.sampler import TrajSampler
@@ -25,6 +26,7 @@ from utilities.utils import (
   set_random_seed,
 )
 from viskit.logging import logger, setup_logger
+from pathlib import Path
 
 SOTALogger = WandBLogger
 
@@ -52,6 +54,8 @@ FLAGS_DEF = define_flags_with_default(
   window_size=3000,  # window size for online sampler
   cql=ConservativeSAC.get_default_config(),
   logging=SOTALogger.get_default_config(),
+  dataset='d4rl',
+  rl_unplugged_task_class = 'control_suite',
 )
 
 
@@ -72,32 +76,51 @@ def main(argv):
 
   set_random_seed(FLAGS.seed)
 
-  eval_sampler = TrajSampler(
-    gym.make(FLAGS.env).unwrapped, FLAGS.max_traj_length
-  )
+  if FLAGS.dataset == 'd4rl':
+    eval_sampler = TrajSampler(
+      gym.make(FLAGS.env).unwrapped, FLAGS.max_traj_length
+    )
 
-  # Build dataset and sampler
-  dataset = get_d4rl_dataset(
-    eval_sampler.env,
-    FLAGS.cql.nstep,
-    FLAGS.cql.discount,
-  )
-  dataset['rewards'
-         ] = dataset['rewards'] * FLAGS.reward_scale + FLAGS.reward_bias
-  dataset['actions'] = np.clip(
-    dataset['actions'], -FLAGS.clip_action, FLAGS.clip_action
-  )
-  dataset = Dataset(dataset)
-  if FLAGS.online:
-    sampler = SlidingWindowSampler(
-      dataset.size(),
-      FLAGS.n_epochs * FLAGS.n_train_step_per_epoch,
-      FLAGS.window_size,
-      FLAGS.batch_size,
+    # Build dataset and sampler
+    dataset = get_d4rl_dataset(
+      eval_sampler.env,
+      FLAGS.cql.nstep,
+      FLAGS.cql.discount,
+    )
+
+    dataset['rewards'
+           ] = dataset['rewards'] * FLAGS.reward_scale + FLAGS.reward_bias
+    dataset['actions'] = np.clip(
+      dataset['actions'], -FLAGS.clip_action, FLAGS.clip_action
+    )
+    dataset = Dataset(dataset)
+    if FLAGS.online:
+      sampler = SlidingWindowSampler(
+        dataset.size(),
+        FLAGS.n_epochs * FLAGS.n_train_step_per_epoch,
+        FLAGS.window_size,
+        FLAGS.batch_size,
+      )
+    else:
+      sampler = RandSampler(dataset.size(), FLAGS.batch_size)
+    dataset.set_sampler(sampler)
+
+  elif FLAGS.dataset == 'rl_unplugged':
+    path = Path(__file__).absolute().parent.parent / 'data'
+    dataset = RLUPDataset(
+      FLAGS.rl_unplugged_task_class,
+      FLAGS.env,
+      str(path),
+      batch_size=FLAGS.batch_size,
+      action_clipping=FLAGS.clip_action,
+    )
+
+    env = DM2Gym(dataset.env)
+    eval_sampler = TrajSampler(
+      env, max_traj_length=FLAGS.max_traj_length
     )
   else:
-    sampler = RandSampler(dataset.size(), FLAGS.batch_size)
-  dataset.set_sampler(sampler)
+    raise NotImplementedError
 
   observation_dim = eval_sampler.env.observation_space.shape[0]
   action_dim = eval_sampler.env.action_space.shape[0]

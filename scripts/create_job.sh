@@ -39,6 +39,8 @@ sed -i "s/%{GPU}/$GPU/g" "$TEMPORARY_JOB_FILE"
 sed -i "s/%{MEM}/$MEM/g" "$TEMPORARY_JOB_FILE"
 sed -i "s/%{NAMESPACE}/$NS/g" "$TEMPORARY_JOB_FILE"
 sed -i "s/%{PRIORITY}/$PRIORITY/g" "$TEMPORARY_JOB_FILE"
+sed -i "s/%{WB_KEY}/$WANDB_API_KEY/g" "$TEMPORARY_JOB_FILE"
+sed -i "s/%{SOTA_KEY}/$SOTA_API_KEY/g" "$TEMPORARY_JOB_FILE"
 
 # cat "$TEMPORARY_JOB_FILE"
 echo "$NS: $PRIORITY"

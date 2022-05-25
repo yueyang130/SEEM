@@ -4,6 +4,7 @@ d4rl
 wandb
 flax
 distrax
+dm-acme
 scikit-image>=0.19.1
 tqdm>=4.62.3
 seaborn>=0.11.2

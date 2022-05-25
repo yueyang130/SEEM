@@ -40,9 +40,9 @@ spec:
         # command: ["/bin/sh", "-c", "sleep 86400"]
         env:
         - name: SOTA_API_KEY
-          value: your_key
+          value: %{SOTA_KEY}
         - name: WANDB_API_KEY
-          value: your_key
+          value: %{WB_KEY}
         - name: LD_LIBRARY_PATH
           value: /usr/local/lib/python3.8/dist-packages/cv2/../../lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/root/.mujoco/mujoco200/bin
         resources:
