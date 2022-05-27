@@ -18,7 +18,6 @@ class CRR(object):
   def get_default_config(updates=None):
     config = ConfigDict()
     config.discount = 0.99
-    config.alpha_multiplier = 1.0
     config.use_automatic_entropy_tuning = True
     config.backup_entropy = False
     config.target_entropy = 0.0
@@ -71,15 +70,6 @@ class CRR(object):
 
     model_keys = ['policy', 'qf']
 
-    if self.config.use_automatic_entropy_tuning:
-      self.log_alpha = Scalar(0.0)
-      self._train_states['log_alpha'] = TrainState.create(
-        params=self.log_alpha.init(next_rng()),
-        tx=optimizer_class(self.config.policy_lr),
-        apply_fn=None
-      )
-      model_keys.append('log_alpha')
-
     self._model_keys = tuple(model_keys)
     self._total_steps = 0
 
@@ -107,18 +97,6 @@ class CRR(object):
         train_params['policy'], split_rng, observations
      )
 
-      if self.config.use_automatic_entropy_tuning:
-        alpha_loss = -self.log_alpha.apply(train_params['log_alpha']) * (
-          log_pi + self.config.target_entropy
-        ).mean()
-        loss_collection['log_alpha'] = alpha_loss
-        alpha = jax.nn.softplus(
-          self.log_alpha.apply(train_params['log_alpha'])
-        ) * self.config.alpha_multiplier
-      else:
-        alpha_loss = 0.0
-        alpha = self.config.alpha_multiplier
-
       """ Q function loss """
       q1_pred = self.qf.apply(train_params['qf'], observations, actions)
 
@@ -129,9 +107,6 @@ class CRR(object):
       target_q_values = self.qf.apply(
         target_qf_params['qf'], next_observations, new_next_actions
       )
-
-      if self.config.backup_entropy:
-        target_q_values = target_q_values - alpha * next_log_pi
 
       q_target = jax.lax.stop_gradient(
         rewards + (1. - dones) * self.config.discount * target_q_values
@@ -191,8 +166,6 @@ class CRR(object):
       log_pi=aux_values['log_pi'].mean(),
       policy_loss=aux_values['policy_loss'],
       qf_loss=aux_values['qf_loss'],
-      alpha_loss=aux_values['alpha_loss'],
-      alpha=aux_values['alpha'],
       average_qf=aux_values['q1_pred'].mean(),
       average_target_q=aux_values['target_q_values'].mean(),
     )
