@@ -11,7 +11,7 @@ from algos.model import (
   SamplerPolicy,
   TanhGaussianPolicy,
 )
-from data import Dataset, RandSampler, SlidingWindowSampler, RLUPDataset, DM2Gym
+from data import Dataset, RandSampler, SlidingWindowSampler, RLUPDataset, DM2Gym, BalancedSampler
 import data
 from utilities.jax_utils import batch_to_jax
 from utilities.replay_buffer import get_d4rl_dataset
@@ -50,7 +50,7 @@ FLAGS_DEF = define_flags_with_default(
   eval_period=10,
   eval_n_trajs=5,
   # configs for trining scheme
-  online=False,  # use online training
+  sampler='random', # online, random, balanced
   window_size=3000,  # window size for online sampler
   cql=ConservativeSAC.get_default_config(),
   logging=SOTALogger.get_default_config(),
@@ -93,12 +93,21 @@ def main(argv):
     dataset['actions'] = np.clip(
       dataset['actions'], -FLAGS.clip_action, FLAGS.clip_action
     )
+    probs = dataset['rewards']
+    probs = (probs - probs.min()) / (probs.max() - probs.min())
+
     dataset = Dataset(dataset)
-    if FLAGS.online:
+    if FLAGS.sampler == 'online':
       sampler = SlidingWindowSampler(
         dataset.size(),
         FLAGS.n_epochs * FLAGS.n_train_step_per_epoch,
         FLAGS.window_size,
+        FLAGS.batch_size,
+      )
+    elif FLAGS.sampler == 'balanced':
+      sampler = BalancedSampler(
+        probs,
+        dataset.size(),
         FLAGS.batch_size,
       )
     else:
