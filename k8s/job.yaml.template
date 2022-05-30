@@ -18,7 +18,7 @@ spec:
       terminationGracePeriodSeconds: 300
       containers:
       - name: "%USER-job"
-        image: "harbor.seacloud.garenanow.com/max/mujoco:d4rl"
+        image: "registry.git.insea.io/sail/gameai/image_registry/max/mujoco:d4rl"
         command: ["/bin/sh", "-c", "sleep 86400"]
         imagePullPolicy: Always
         env:
@@ -52,7 +52,7 @@ spec:
               command: ["/bin/sh","-c","echo prestophook triggered > /job-folder/presstophook"]
 
       imagePullSecrets:
-      - name: regcred
+      - name: gitlab-cr-pull-secret
       restartPolicy: Never
       volumes:
       - name: workspace-vol
