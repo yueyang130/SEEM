@@ -15,12 +15,17 @@ spec:
       # time for prestop command execution before a container is killed
       terminationGracePeriodSeconds: 300
 
-      nodeSelector:
-        machine-groups: aiops-apollo
+      # tolerations:
+      # - key: aiops-mig
+      #   operator: Exists
+      #   effect: NoSchedule
+
+      # nodeSelector:
+      #   machine-groups: aiops-mig
 
       containers:
       - name: "%{USER}-job"
-        image: "registry.git.insea.io/sail/gameai/image_registry/max/mujoco:d4rl"
+        image: "registry.git.insea.io/sail/gameai/image_registry/max/mujoco:latest"
         imagePullPolicy: Always
         volumeMounts:
         # name need to match volume name below

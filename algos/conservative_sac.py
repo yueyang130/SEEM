@@ -24,6 +24,7 @@ class ConservativeSAC(object):
     config.use_automatic_entropy_tuning = True
     config.backup_entropy = False
     config.target_entropy = 0.0
+    config.encoder_lr = 3e-4
     config.policy_lr = 3e-4
     config.qf_lr = 3e-4
     config.optimizer_type = 'adam'
@@ -40,16 +41,20 @@ class ConservativeSAC(object):
     config.cql_clip_diff_max = np.inf
     config.bc_mode = 'mse'  # 'mle'
     config.bc_weight = 0.
+    config.res_hidden_size = 1024
+    config.encoder_blocks = 1
+    config.head_blocks = 1
 
     if updates is not None:
       config.update(ConfigDict(updates).copy_and_resolve_references())
     return config
 
-  def __init__(self, config, policy, qf):
+  def __init__(self, config, encoder, policy, qf):
     self.config = self.get_default_config(config)
     self.policy = policy
     self.qf = qf
-    self.observation_dim = policy.observation_dim
+    self.encoder = encoder
+    self.observation_dim = policy.input_size
     self.action_dim = policy.action_dim
 
     self._train_states = {}
@@ -58,6 +63,15 @@ class ConservativeSAC(object):
       'adam': optax.adam,
       'sgd': optax.sgd,
     }[self.config.optimizer_type]
+
+    encoder_params = self.encoder.init(
+      next_rng(), jnp.zeros((10, self.policy.observation_dim))
+    )
+    self._train_states['encoder'] = TrainState.create(
+      params=encoder_params,
+      tx=optimizer_class(self.config.encoder_lr),
+      apply_fn=None
+    )
 
     policy_params = self.policy.init(
       next_rng(), next_rng(), jnp.zeros((10, self.observation_dim))
@@ -88,7 +102,7 @@ class ConservativeSAC(object):
     )
     self._target_qf_params = deepcopy({'qf1': qf1_params, 'qf2': qf2_params})
 
-    model_keys = ['policy', 'qf1', 'qf2']
+    model_keys = ['policy', 'qf1', 'qf2', 'encoder']
 
     if self.config.use_automatic_entropy_tuning:
       self.log_alpha = Scalar(0.0)
@@ -131,8 +145,14 @@ class ConservativeSAC(object):
       loss_collection = {}
 
       rng, split_rng = jax.random.split(rng)
+      embedding = self.encoder.apply(
+        train_params['encoder'], observations
+      )
+      next_embedding = self.encoder.apply(
+        train_params['encoder'], next_observations
+      )
       new_actions, log_pi = self.policy.apply(
-        train_params['policy'], split_rng, observations
+        train_params['policy'], split_rng, embedding 
       )
 
       if self.config.use_automatic_entropy_tuning:
@@ -151,7 +171,7 @@ class ConservativeSAC(object):
       if self.config.bc_mode == 'mle':
         log_probs = self.policy.apply(
           train_params['policy'],
-          observations,
+          embedding,
           actions,
           method=self.policy.log_prob
         )
@@ -165,15 +185,15 @@ class ConservativeSAC(object):
       if bc:
         log_probs = self.policy.apply(
           train_params['policy'],
-          observations,
+          embedding,
           actions,
           method=self.policy.log_prob
         )
         rl_loss = (alpha * log_pi - log_probs).mean()
       else:
         q_new_actions = jnp.minimum(
-          self.qf.apply(train_params['qf1'], observations, new_actions),
-          self.qf.apply(train_params['qf2'], observations, new_actions),
+          self.qf.apply(train_params['qf1'], embedding, new_actions),
+          self.qf.apply(train_params['qf2'], embedding, new_actions),
         )
         rl_loss = (alpha * log_pi - q_new_actions).mean()
 
@@ -183,23 +203,23 @@ class ConservativeSAC(object):
       loss_collection['bc_loss'] = bc_loss
       loss_collection['rl_loss'] = rl_loss
       """ Q function loss """
-      q1_pred = self.qf.apply(train_params['qf1'], observations, actions)
-      q2_pred = self.qf.apply(train_params['qf2'], observations, actions)
+      q1_pred = self.qf.apply(train_params['qf1'], embedding, actions)
+      q2_pred = self.qf.apply(train_params['qf2'], embedding, actions)
 
       rng, split_rng = jax.random.split(rng)
       if self.config.cql_max_target_backup:
         new_next_actions, next_log_pi = self.policy.apply(
           train_params['policy'],
           split_rng,
-          next_observations,
+          next_embedding,
           repeat=self.config.cql_n_actions
         )
         target_q_values = jnp.minimum(
           self.qf.apply(
-            target_qf_params['qf1'], next_observations, new_next_actions
+            target_qf_params['qf1'], next_embedding, new_next_actions
           ),
           self.qf.apply(
-            target_qf_params['qf2'], next_observations, new_next_actions
+            target_qf_params['qf2'], next_embedding, new_next_actions
           ),
         )
         max_target_indices = jnp.expand_dims(
@@ -213,14 +233,14 @@ class ConservativeSAC(object):
         ).squeeze(-1)
       else:
         new_next_actions, next_log_pi = self.policy.apply(
-          train_params['policy'], split_rng, next_observations
+          train_params['policy'], split_rng, next_embedding
         )
         target_q_values = jnp.minimum(
           self.qf.apply(
-            target_qf_params['qf1'], next_observations, new_next_actions
+            target_qf_params['qf1'], next_embedding, new_next_actions
           ),
           self.qf.apply(
-            target_qf_params['qf2'], next_observations, new_next_actions
+            target_qf_params['qf2'], next_embedding, new_next_actions
           ),
         )
 
@@ -249,34 +269,34 @@ class ConservativeSAC(object):
         cql_current_actions, cql_current_log_pis = self.policy.apply(
           train_params['policy'],
           split_rng,
-          observations,
+          embedding,
           repeat=self.config.cql_n_actions
         )
         rng, split_rng = jax.random.split(rng)
         cql_next_actions, cql_next_log_pis = self.policy.apply(
           train_params['policy'],
           split_rng,
-          next_observations,
+          next_embedding,
           repeat=self.config.cql_n_actions
         )
 
         cql_q1_rand = self.qf.apply(
-          train_params['qf1'], observations, cql_random_actions
+          train_params['qf1'], embedding, cql_random_actions
         )
         cql_q2_rand = self.qf.apply(
-          train_params['qf2'], observations, cql_random_actions
+          train_params['qf2'], embedding, cql_random_actions
         )
         cql_q1_current_actions = self.qf.apply(
-          train_params['qf1'], observations, cql_current_actions
+          train_params['qf1'], embedding, cql_current_actions
         )
         cql_q2_current_actions = self.qf.apply(
-          train_params['qf2'], observations, cql_current_actions
+          train_params['qf2'], embedding, cql_current_actions
         )
         cql_q1_next_actions = self.qf.apply(
-          train_params['qf1'], observations, cql_next_actions
+          train_params['qf1'], embedding, cql_next_actions
         )
         cql_q2_next_actions = self.qf.apply(
-          train_params['qf2'], observations, cql_next_actions
+          train_params['qf2'], embedding, cql_next_actions
         )
 
         cql_cat_q1 = jnp.concatenate(
@@ -367,6 +387,11 @@ class ConservativeSAC(object):
 
       loss_collection['qf1'] = qf1_loss
       loss_collection['qf2'] = qf2_loss
+      loss_collection['encoder'] = (
+        loss_collection['policy'] +
+        loss_collection['qf1'] +
+        loss_collection['qf2']
+      ) / 3
       return tuple(loss_collection[key] for key in self.model_keys), locals()
 
     train_params = {key: train_states[key].params for key in self.model_keys}

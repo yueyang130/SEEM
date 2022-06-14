@@ -8,7 +8,7 @@ echo $TEMPLATE_FILE
 # DOCKER_NAME=$1
 # DOCKER_TAG=$2
 # NameSpace
-NS="${NS:-$USER}"
+NS="${NS:-offrl}"
 
 # PROJECT=$DOCKER_NAME
 COMMAND="${*:1}"
@@ -16,9 +16,9 @@ ESCAPED_COMMAND=$(printf '%s\n' "$COMMAND" | sed -e 's/[\/&]/\\&/g')
 USER_ID=$(id -u)
 GROUP_ID=$(id -g)
 
-CPU="${CPU:-12}"
+CPU="${CPU:-4}"
 GPU="${GPU:-1}"
-MEM="${MEM:-20Gi}"
+MEM="${MEM:-21Gi}"
 
 PRIORITY="${PRIORITY:-low}"
 

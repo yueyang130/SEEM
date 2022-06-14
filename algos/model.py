@@ -1,4 +1,5 @@
 from functools import partial
+from typing import Any
 
 import distrax
 import jax
@@ -85,6 +86,60 @@ class FullyConnectedNetwork(nn.Module):
     return output
 
 
+class ResidualBlock(nn.Module):
+  hidden_dim: int
+  norm: Any
+  act: Any
+
+  @nn.compact
+  def __call__(self, x):
+    residual = x
+    y = nn.Dense(self.hidden_dim)(x)
+    y = self.norm()(y)
+    y = self.act(y)
+    y = nn.Dense(self.hidden_dim)(y)
+    y = self.norm()(y)
+
+    if residual.shape != y.shape:
+      residual = nn.Dense(self.hidden_dim)(residual)
+      residual = nn.LayerNorm()(residual)
+
+    return self.act(y + residual)
+
+
+class ResEncoder(nn.Module):
+  num_blocks: int
+  hidden_dim: int
+  act: Any
+
+  @nn.compact
+  def __call__(self, x):
+    def norm_fn():
+      return jax.nn.standardize
+
+    for _ in range(self.num_blocks):
+      x = ResidualBlock(hidden_dim=self.hidden_dim, norm=norm_fn, act=self.act)(x)
+    
+    x = jax.nn.standardize(x)
+    x = nn.elu(x)
+    x = nn.Dense(self.hidden_dim)(x)
+    x = nn.LayerNorm()(x)
+    x = nn.tanh(x)
+    
+    return x
+
+
+class IdentityEncoder(nn.Module):
+  """An Identity mapping encoder."""
+  num_blocks: int
+  hidden_dim: int
+  act: Any
+
+  @nn.compact
+  def __call__(self, x):
+    return x
+
+
 class FullyConnectedQFunction(nn.Module):
   observation_dim: int
   action_dim: int
@@ -101,6 +156,46 @@ class FullyConnectedQFunction(nn.Module):
       x
     )
     return jnp.squeeze(x, -1)
+  
+  @property
+  def input_size(self):
+    return self.observation_dim
+
+
+class ResQFunction(nn.Module):
+  observation_dim: int
+  action_dim: int
+  arch: str = '1024'
+  orthogonal_init: bool = False
+  num_blocks: int = 4
+
+  @nn.compact
+  @multiple_action_q_function
+  def __call__(self, x_emb, actions):
+    hidden_dim = int(self.arch)
+    act_emb = nn.Dense(hidden_dim)(actions)
+    act_emb = nn.LayerNorm()(act_emb)
+    act_emb = nn.relu(act_emb)
+
+    x = jnp.concatenate((x_emb, act_emb), axis=-1)
+    x = nn.Dense(hidden_dim)(x)
+    for _ in range(4):
+      x = ResidualBlock(
+        hidden_dim,
+        nn.LayerNorm,
+        nn.relu
+      )(x)
+    
+    x = FullyConnectedNetwork(
+      output_dim=1, arch=self.arch, orthogonal_init=self.orthogonal_init
+    )(x)
+
+    return jnp.squeeze(x, -1)
+  
+  @property
+  def input_size(self):
+    hs = [int(h) for h in self.arch.split('-')]
+    return hs[0]
 
 
 class TanhGaussianPolicy(nn.Module):
@@ -153,13 +248,54 @@ class TanhGaussianPolicy(nn.Module):
       samples, log_prob = action_distribution.sample_and_log_prob(seed=rng)
 
     return samples, log_prob
+  
+  @property
+  def input_size(self):
+    return self.observation_dim
+
+
+class ResTanhGaussianPolicy(TanhGaussianPolicy):
+  observation_dim: int
+  action_dim: int
+  arch: str = '1024'
+  orthogonal_init: bool = False
+  log_std_multiplier: float = 1.0
+  log_std_offset: float = -1.0
+  num_blocks: int = 4
+
+  def setup(self):
+    self.hidden_dim = int(self.arch)
+    layers = []
+    for _ in range(self.num_blocks):
+      layers.append(
+        ResidualBlock(
+          self.hidden_dim,
+          nn.LayerNorm,
+          nn.relu
+        )
+      )
+    layers.append(
+      FullyConnectedNetwork(
+        2 * self.action_dim,
+        self.arch,
+        self.orthogonal_init
+      )
+    )
+    self.base_network = nn.Sequential(layers)
+    self.log_std_multiplier_module = Scalar(self.log_std_multiplier)
+    self.log_std_offset_module = Scalar(self.log_std_offset)
+  
+  @property
+  def input_size(self):
+    hs = [int(h) for h in self.arch.split('-')]
+    return hs[0]
 
 
 class SamplerPolicy(object):
 
-  def __init__(self, policy, params, mean=0, std=1):
+  def __init__(self, policy, policy_params, mean=0, std=1):
     self.policy = policy
-    self.params = params
+    self.policy_params = policy_params
     self.mean = mean
     self.std = std
 
@@ -184,8 +320,39 @@ class SamplerPolicy(object):
     return jax.device_get(actions)
 
 
+class SamplerPolicyEncoder(object):
+
+  def __init__(self, agent, params, mean=0, std=1):
+    self.agent = agent
+    self.params = params 
+    self.mean = mean
+    self.std = std
+
+  def update_params(self, params):
+    self.params = params
+    return self
+  
+  @partial(jax.jit, static_argnames=('self', 'deterministic'))
+  def act(self, policy_params, encoder_params, rng, observations, deterministic):
+    emb = self.agent.encoder.apply(
+      encoder_params, observations
+    )
+    return self.agent.policy.apply(
+      policy_params, rng, emb, deterministic, repeat=None
+    )
+
+  def __call__(self, observations, deterministic=False):
+    observations = (observations - self.mean) / self.std
+    actions = self.act(
+      self.params['policy'], self.params['encoder'], next_rng(), observations, deterministic=deterministic
+    )
+    if isinstance(actions, tuple):
+      actions = actions[0]
+    assert jnp.all(jnp.isfinite(actions))
+    return jax.device_get(actions)
+
+
 class DirectMappingPolicy(nn.Module):
-  observation_dim: int
   action_dim: int
   max_action: int
   arch: str = '256-256'
@@ -207,7 +374,6 @@ class DirectMappingPolicy(nn.Module):
 
 
 class TD3Critic(nn.Module):
-  observation_dim: int
   action_dim: int
   arch: str = '256-256'
   orthogonal_init: bool = False
@@ -230,3 +396,27 @@ class TD3Critic(nn.Module):
     q1 = jnp.squeeze(self.q1(x), -1)
 
     return q1
+
+
+if __name__ == "__main__":
+  rng = jax.random.PRNGKey(0)
+
+  encoder = ResEncoder(
+    4, 1024, nn.elu
+  )
+  encoder_params = encoder.init(
+    rng, jnp.zeros((10, 64))
+  )
+  
+  policy = ResTanhGaussianPolicy(
+    64, 6,
+  )
+  policy_params = policy.init(
+    rng, rng, jnp.zeros((10, 64))
+  )
+
+  qf = ResQFunction(
+    64, 6
+  )
+
+  import ipdb; ipdb.set_trace()

@@ -4,12 +4,17 @@ import absl.flags
 # import d4rl  # type: ignore
 import gym
 import numpy as np
+import chex
 
 from algos.conservative_sac import ConservativeSAC
 from algos.model import (
   FullyConnectedQFunction,
-  SamplerPolicy,
+  SamplerPolicyEncoder,
   TanhGaussianPolicy,
+  IdentityEncoder,
+  ResEncoder,
+  ResQFunction,
+  ResTanhGaussianPolicy,
 )
 from data import Dataset, RandSampler, SlidingWindowSampler, RLUPDataset, DM2Gym, BalancedSampler
 import data
@@ -27,6 +32,8 @@ from utilities.utils import (
 )
 from viskit.logging import logger, setup_logger
 from pathlib import Path
+from flax import linen as nn
+import tqdm
 
 SOTALogger = WandBLogger
 
@@ -56,6 +63,7 @@ FLAGS_DEF = define_flags_with_default(
   logging=SOTALogger.get_default_config(),
   dataset='d4rl',
   rl_unplugged_task_class = 'control_suite',
+  use_resnet=False,
 )
 
 
@@ -134,29 +142,53 @@ def main(argv):
   observation_dim = eval_sampler.env.observation_space.shape[0]
   action_dim = eval_sampler.env.action_space.shape[0]
 
-  policy = TanhGaussianPolicy(
-    observation_dim, action_dim, FLAGS.policy_arch, FLAGS.orthogonal_init,
-    FLAGS.policy_log_std_multiplier, FLAGS.policy_log_std_offset
-  )
-  qf = FullyConnectedQFunction(
-    observation_dim, action_dim, FLAGS.qf_arch, FLAGS.orthogonal_init
-  )
+  if not FLAGS.use_resnet:
+    policy = TanhGaussianPolicy(
+      observation_dim, action_dim, FLAGS.policy_arch, FLAGS.orthogonal_init,
+      FLAGS.policy_log_std_multiplier, FLAGS.policy_log_std_offset
+    )
+    qf = FullyConnectedQFunction(
+      observation_dim, action_dim, FLAGS.qf_arch, FLAGS.orthogonal_init
+    )
+    encoder = IdentityEncoder(1, 1024, nn.relu)
+  else:
+    hidden_dim = FLAGS.cql.res_hidden_size
+    encoder_blocks = FLAGS.cql.encoder_blocks
+    encoder = ResEncoder(
+      encoder_blocks,
+      hidden_dim,
+      nn.elu,
+    )
+    policy = ResTanhGaussianPolicy(
+      observation_dim,
+      action_dim,
+      f"{FLAGS.cql.res_hidden_size}",
+      FLAGS.orthogonal_init,
+      FLAGS.policy_log_std_multiplier,
+      FLAGS.policy_log_std_offset,
+      FLAGS.cql.head_blocks,
+    )
+    qf = ResQFunction(
+      observation_dim,
+      action_dim,
+      f"{FLAGS.cql.res_hidden_size}",
+      FLAGS.orthogonal_init,
+      FLAGS.cql.head_blocks,
+    )
 
   if FLAGS.cql.target_entropy >= 0.0:
     FLAGS.cql.target_entropy = -np.prod(eval_sampler.env.action_space.shape
                                        ).item()
 
-  sac = ConservativeSAC(FLAGS.cql, policy, qf)
-  sampler_policy = SamplerPolicy(sac.policy, sac.train_params['policy'])
+  sac = ConservativeSAC(FLAGS.cql, encoder, policy, qf)
+  sampler_policy = SamplerPolicyEncoder(sac, sac.train_params)
 
   viskit_metrics = {}
   for epoch in range(FLAGS.n_epochs):
     metrics = {'epoch': epoch}
 
     with Timer() as train_timer:
-      for _ in range(FLAGS.n_train_step_per_epoch):
-        # batch = batch_to_jax(subsample_batch(dataset, FLAGS.batch_size))
-        print(_)
+      for _ in tqdm.tqdm(range(FLAGS.n_train_step_per_epoch)):
         batch = batch_to_jax(dataset.sample())
         metrics.update(
           prefix_metrics(sac.train(batch, bc=epoch < FLAGS.bc_epochs), 'sac')
@@ -165,7 +197,7 @@ def main(argv):
     with Timer() as eval_timer:
       if epoch == 0 or (epoch + 1) % FLAGS.eval_period == 0:
         trajs = eval_sampler.sample(
-          sampler_policy.update_params(sac.train_params['policy']),
+          sampler_policy.update_params(sac.train_params),
           FLAGS.eval_n_trajs,
           deterministic=True
         )

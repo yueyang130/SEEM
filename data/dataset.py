@@ -12,6 +12,7 @@ from dm_env import StepType
 import tensorflow_datasets as tfds
 from pathlib import Path
 
+tf.config.set_visible_devices([], 'GPU')
 
 class Dataset(object):
   """Dataset."""
