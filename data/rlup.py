@@ -1,12 +1,13 @@
 import rlds
 import tensorflow_datasets as tfds
 import tensorflow as tf
+from acme.jax.utils import prefetch
 
 
-def traj_fn(traj_length, obs_keys):
+def traj_fn(traj_length):
   def step_proc_fn(batch):
     obs = tf.concat(
-      [batch[rlds.OBSERVATION][k] for k in obs_keys], axis=-1
+      list(batch[rlds.OBSERVATION].values), axis=-1
     )
     return {
       rlds.OBSERVATION: obs,
@@ -27,7 +28,7 @@ def traj_fn(traj_length, obs_keys):
 
 
 class OfflineDataset:
-  def __init__(self, domain='rlu_control_suite', task='walker_walk', batch_size=256, episode_shuffle_size=10, traj_length=10, shuffle_num_steps=50000) -> None:
+  def __init__(self, domain='rlu_control_suite', task='walker_walk', batch_size=256, episode_shuffle_size=10, traj_length=10, shuffle_num_steps=50000, buffer_size=10) -> None:
     self._domain = domain
     self._task = task
     self._obs_keys = []
@@ -43,7 +44,7 @@ class OfflineDataset:
 
     _ds = tfds.load(self._ds_name)['train']
     _ds = _ds.shuffle(episode_shuffle_size).interleave(
-      traj_fn(traj_length, self._obs_keys),
+      traj_fn(traj_length),
       cycle_length=100,
       block_length=1,
       deterministic=False,
@@ -55,6 +56,7 @@ class OfflineDataset:
     )
     _ds = _ds.batch(batch_size)
     self._ds = iter(_ds)
+    self._ds = prefetch(self._ds, buffer_size=buffer_size)
   
   def sample(self):
     # data has shape [B, T, H]
