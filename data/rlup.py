@@ -75,3 +75,7 @@ class TransitionDataset(OfflineDataset):
 if __name__ == "__main__":
   off_ds = TransitionDataset()
   sampled_data = off_ds.sample()
+
+  import tqdm
+  for _ in tqdm.tqdm(range(100)):
+    off_ds.sample()

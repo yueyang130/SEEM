@@ -76,39 +76,43 @@ class RLUPDataset(object):
       uint8_features=self.task.uint8_features,
       num_shards=self._num_shards,
       shuffle_buffer_size=self._shuffle_buffer_size,
-    )
+    ).prefetch(tf.data.AUTOTUNE)
+
 
     def discard_extras(sample):
       return sample._replace(data=sample.data[:5])
+    
+    def post_proc(data):
+      transitions = types.Transition(*data.data)
+      observation = transitions.observation
+      next_obs = transitions.next_observation
+      reward = transitions.reward
+      action = transitions.action
+      discount = transitions.discount
 
-    _ds = _ds.map(discard_extras).batch(self._batch_size)
+      observation = tf2_utils.batch_concat(observation)
+      next_obs = tf2_utils.batch_concat(next_obs)
+
+      batch = dict(
+        observations=observation,
+        next_observations=next_obs,
+        rewards=reward,
+        actions=action,
+        discounts=discount,
+        dones=tf.zeros_like(reward),
+      )
+      batch['actions'] = tf.clip_by_value(
+        batch['actions'], -self._action_clipping, self._action_clipping
+      )
+
+      return batch
+
+    _ds = _ds.map(discard_extras).batch(self._batch_size).map(post_proc, num_parallel_calls=tf.data.AUTOTUNE)
     self._ds = iter(_ds)
 
   def sample(self):
     data = next(self._ds)
-    transitions = types.Transition(*data.data)
-    observation = transitions.observation
-    next_obs = transitions.next_observation
-    reward = transitions.reward
-    action = transitions.action
-    discount = transitions.discount
-
-    observation = tf2_utils.batch_concat(observation)
-    next_obs = tf2_utils.batch_concat(next_obs)
-
-    batch = dict(
-      observations=observation,
-      next_observations=next_obs,
-      rewards=reward,
-      actions=action,
-      discounts=discount,
-      dones=tf.zeros_like(reward),
-    )
-
-    batch = tfds.as_numpy(batch)
-    batch['actions'] = np.clip(
-      batch['actions'], -self._action_clipping, self._action_clipping
-    )
+    batch = tfds.as_numpy(data)
     return batch
 
   @property
@@ -180,5 +184,7 @@ if __name__ == "__main__":
     batch_size=16
   )
 
-  data = ds.sample()
-  print(data)
+  import tqdm
+
+  for _ in tqdm.tqdm(range(10000)):
+    data = ds.sample()
