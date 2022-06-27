@@ -21,6 +21,7 @@ class CRR(object):
     config.use_automatic_entropy_tuning = True
     config.backup_entropy = False
     config.target_entropy = 0.0
+    config.encoder_lr = 3e-4
     config.policy_lr = 3e-4
     config.qf_lr = 3e-4
     config.optimizer_type = 'adam'
@@ -29,13 +30,15 @@ class CRR(object):
     config.crr_fn = 'exp' # exp or indicator
     config.crr_beta = 1.0
     config.crr_ratio_upper_bound = 20.0
+    config.nstep = 1
 
     if updates is not None:
       config.update(ConfigDict(updates).copy_and_resolve_references())
     return config
 
-  def __init__(self, config, policy, qf):
+  def __init__(self, config, encoder, policy, qf):
     self.config = self.get_default_config(config)
+    self.encoder = encoder
     self.policy = policy
     self.qf = qf
     self.observation_dim = policy.observation_dim
@@ -47,6 +50,15 @@ class CRR(object):
       'adam': optax.adam,
       'sgd': optax.sgd,
     }[self.config.optimizer_type]
+
+    encoder_params = self.encoder.init(
+      next_rng(), jnp.zeros((10, self.policy.observation_dim))
+    )
+    self._train_states['encoder'] = TrainState.create(
+      params=encoder_params,
+      tx=optimizer_class(self.config.encoder_lr),
+      apply_fn=None
+    )
 
     policy_params = self.policy.init(
       next_rng(), next_rng(), jnp.zeros((10, self.observation_dim))
@@ -68,12 +80,12 @@ class CRR(object):
     )
     self._target_qf_params = deepcopy({'qf': qf_params})
 
-    model_keys = ['policy', 'qf']
+    model_keys = ['policy', 'qf', 'encoder']
 
     self._model_keys = tuple(model_keys)
     self._total_steps = 0
 
-  def train(self, batch):
+  def train(self, batch, bc=False):
     self._total_steps += 1
     self._train_states, self._target_qf_params, metrics = self._train_step(
       self._train_states, self._target_qf_params, next_rng(), batch
@@ -91,21 +103,27 @@ class CRR(object):
       dones = batch['dones']
 
       loss_collection = {}
-
+      embedding = self.encoder.apply(
+        train_params['encoder'], observations
+      )
+      next_embedding = self.encoder.apply(
+        train_params['encoder'], next_observations
+      )
+ 
       rng, split_rng = jax.random.split(rng)
       _, log_pi = self.policy.apply(
-        train_params['policy'], split_rng, observations
+        train_params['policy'], split_rng, embedding 
      )
 
       """ Q function loss """
-      q1_pred = self.qf.apply(train_params['qf'], observations, actions)
+      q1_pred = self.qf.apply(train_params['qf'], embedding, actions)
 
       rng, split_rng = jax.random.split(rng)
       new_next_actions, next_log_pi = self.policy.apply(
-        train_params['policy'], split_rng, next_observations
+        train_params['policy'], split_rng, next_embedding 
       )
       target_q_values = self.qf.apply(
-        target_qf_params['qf'], next_observations, new_next_actions
+        target_qf_params['qf'], next_embedding, new_next_actions
       )
 
       q_target = jax.lax.stop_gradient(
@@ -117,7 +135,7 @@ class CRR(object):
 
       rng, split_rng = jax.random.split(rng)
       replicated_obs = jnp.broadcast_to(
-        observations, (self.config.sample_actions,) + observations.shape
+        embedding, (self.config.sample_actions,) + embedding.shape
       )
       vf_actions, _ = self.policy.apply(
         train_params['policy'], split_rng, replicated_obs
@@ -138,12 +156,16 @@ class CRR(object):
       coef = jax.lax.stop_gradient(coef)
       log_prob = self.policy.apply(
         train_params['policy'],
-        observations,
+        embedding,
         actions,
         method=self.policy.log_prob
       )
       policy_loss = -jnp.mean(log_prob * coef)
       loss_collection['policy'] = policy_loss
+      loss_collection['encoder'] = (
+        loss_collection['policy'] +
+        loss_collection['qf']
+      )
 
       return tuple(loss_collection[key] for key in self.model_keys), locals()
 

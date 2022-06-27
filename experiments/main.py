@@ -1,23 +1,22 @@
 import absl.app
 import absl.flags
 
-# import d4rl  # type: ignore
 import gym
 import numpy as np
-import chex
 
-from algos.mpo import MPO
+import algos
 from algos.model import (
   FullyConnectedQFunction,
+  ResTanhGaussianPolicy,
   SamplerPolicyEncoder,
   ClipGaussianPolicy,
+  TanhGaussianPolicy,
   IdentityEncoder,
   ResEncoder,
   ResQFunction,
   ResClipGaussianPolicy,
 )
 from data import Dataset, RandSampler, SlidingWindowSampler, RLUPDataset, DM2Gym, BalancedSampler
-import data
 from utilities.jax_utils import batch_to_jax
 from utilities.replay_buffer import get_d4rl_dataset, ReplayBuffer
 from utilities.sampler import TrajSampler, StepSampler
@@ -39,6 +38,7 @@ SOTALogger = WandBLogger
 
 FLAGS_DEF = define_flags_with_default(
   env='walker2d-medium-v2',
+  algo='ConservativeSAC',
   max_traj_length=1000,
   seed=42,
   save_model=False,
@@ -59,7 +59,6 @@ FLAGS_DEF = define_flags_with_default(
   # configs for trining scheme
   sampler='random', # online, random, balanced
   window_size=3000,  # window size for online sampler
-  mpo=MPO.get_default_config(),
   logging=SOTALogger.get_default_config(),
   dataset='d4rl',
   rl_unplugged_task_class = 'control_suite',
@@ -74,6 +73,8 @@ FLAGS_DEF = define_flags_with_default(
 
 def main(argv):
   FLAGS = absl.flags.FLAGS
+  off_algo = getattr(algos, FLAGS.algo)
+  algo_cfg = off_algo.get_default_config()
 
   variant = get_user_flags(FLAGS, FLAGS_DEF)
   sota_logger = SOTALogger(
@@ -101,8 +102,8 @@ def main(argv):
       # Build dataset and sampler
       dataset = get_d4rl_dataset(
         eval_sampler.env,
-        FLAGS.mpo.nstep,
-        FLAGS.mpo.discount,
+        algo_cfg.nstep,
+        algo_cfg.discount,
       )
       dataset['rewards'
              ] = dataset['rewards'] * FLAGS.reward_scale + FLAGS.reward_bias
@@ -153,51 +154,70 @@ def main(argv):
 
   if FLAGS.online:
     replay_buffer = ReplayBuffer(FLAGS.replay_buffer_size)
+
   observation_dim = eval_sampler.env.observation_space.shape[0]
   action_dim = eval_sampler.env.action_space.shape[0]
 
   if not FLAGS.use_resnet:
-    policy = ClipGaussianPolicy(
-      observation_dim, action_dim, FLAGS.policy_arch, FLAGS.orthogonal_init,
-      FLAGS.policy_log_std_multiplier, FLAGS.policy_log_std_offset, FLAGS.use_layer_norm,
-      FLAGS.activation,
-    )
+    if FLAGS.algo == 'MPO':
+      policy = ClipGaussianPolicy(
+        observation_dim, action_dim, FLAGS.policy_arch, FLAGS.orthogonal_init,
+        FLAGS.policy_log_std_multiplier, FLAGS.policy_log_std_offset, FLAGS.use_layer_norm,
+        FLAGS.activation,
+      )
+    else:
+      policy = TanhGaussianPolicy(
+        observation_dim, action_dim, FLAGS.policy_arch, FLAGS.orthogonal_init,
+        FLAGS.policy_log_std_multiplier, FLAGS.policy_log_std_offset,
+      )
+
     qf = FullyConnectedQFunction(
       observation_dim, action_dim, FLAGS.qf_arch, FLAGS.orthogonal_init,
       FLAGS.use_layer_norm, FLAGS.activation,
     )
     encoder = IdentityEncoder(1, 1024, nn.relu)
   else:
-    hidden_dim = FLAGS.mpo.res_hidden_size
-    encoder_blocks = FLAGS.mpo.encoder_blocks
+    hidden_dim = algo_cfg.res_hidden_size
+    encoder_blocks = algo_cfg.encoder_blocks
     encoder = ResEncoder(
       encoder_blocks,
       hidden_dim,
       nn.elu,
     )
-    policy = ResClipGaussianPolicy(
-      observation_dim,
-      action_dim,
-      f"{FLAGS.mpo.res_hidden_size}",
-      FLAGS.orthogonal_init,
-      FLAGS.policy_log_std_multiplier,
-      FLAGS.policy_log_std_offset,
-      FLAGS.mpo.head_blocks,
-    )
+    if FLAGS.algo == 'MPO':
+      policy = ResClipGaussianPolicy(
+        observation_dim,
+        action_dim,
+        f"{algo_cfg.res_hidden_size}",
+        FLAGS.orthogonal_init,
+        FLAGS.policy_log_std_multiplier,
+        FLAGS.policy_log_std_offset,
+        algo_cfg.head_blocks,
+      )
+    else:
+      policy = ResTanhGaussianPolicy(
+        observation_dim,
+        action_dim,
+        f"{algo_cfg.res_hidden_size}",
+        FLAGS.orthogonal_init,
+        FLAGS.policy_log_std_multiplier,
+        FLAGS.policy_log_std_offset,
+        algo_cfg.head_blocks,
+      )
     qf = ResQFunction(
       observation_dim,
       action_dim,
-      f"{FLAGS.mpo.res_hidden_size}",
+      f"{algo_cfg.res_hidden_size}",
       FLAGS.orthogonal_init,
-      FLAGS.mpo.head_blocks,
+      algo_cfg.head_blocks,
     )
 
-  if FLAGS.mpo.target_entropy >= 0.0:
-    FLAGS.mpo.target_entropy = -np.prod(eval_sampler.env.action_space.shape
+  if algo_cfg.target_entropy >= 0.0:
+    algo_cfg.target_entropy = -np.prod(eval_sampler.env.action_space.shape
                                        ).item()
 
-  mpo = MPO(FLAGS.mpo, encoder, policy, qf)
-  sampler_policy = SamplerPolicyEncoder(mpo, mpo.train_params)
+  agent = off_algo(algo_cfg, encoder, policy, qf)
+  sampler_policy = SamplerPolicyEncoder(agent, agent.train_params)
 
   viskit_metrics = {}
   for epoch in range(FLAGS.n_epochs):
@@ -206,7 +226,7 @@ def main(argv):
     if FLAGS.online:
       with Timer() as rollout_timer:
         train_sampler.sample(
-          sampler_policy.update_params(mpo.train_params),
+          sampler_policy.update_params(agent.train_params),
           FLAGS.n_env_steps_per_epoch, deterministic=False,
           replay_buffer=replay_buffer
         )
@@ -220,13 +240,13 @@ def main(argv):
         else:
           batch = batch_to_jax(dataset.sample())
         metrics.update(
-          prefix_metrics(mpo.train(batch, bc=epoch < FLAGS.bc_epochs), 'mpo')
+          prefix_metrics(agent.train(batch, bc=epoch < FLAGS.bc_epochs), 'agent')
         )
 
     with Timer() as eval_timer:
       if epoch == 0 or (epoch + 1) % FLAGS.eval_period == 0:
         trajs = eval_sampler.sample(
-          sampler_policy.update_params(mpo.train_params),
+          sampler_policy.update_params(agent.train_params),
           FLAGS.eval_n_trajs,
           deterministic=True
         )
@@ -244,7 +264,7 @@ def main(argv):
           ]
         )
         if FLAGS.save_model:
-          save_data = {'mpo': mpo, 'variant': variant, 'epoch': epoch}
+          save_data = {'agent': agent, 'variant': variant, 'epoch': epoch}
           sota_logger.save_pickle(save_data, 'model.pkl')
 
     if FLAGS.online:
@@ -258,7 +278,7 @@ def main(argv):
     logger.dump_tabular(with_prefix=False, with_timestamp=False)
 
   if FLAGS.save_model:
-    save_data = {'mpo': mpo, 'variant': variant, 'epoch': epoch}
+    save_data = {'agent': agent, 'variant': variant, 'epoch': epoch}
     sota_logger.save_pickle(save_data, 'model.pkl')
 
 
