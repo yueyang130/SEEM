@@ -37,7 +37,7 @@ class IQL(object):
     config.head_blocks = 1
     config.expectile = 0.7
     config.awr_temperature = 3.0
-    config.loss_type = 'quantile'
+    config.loss_type = 'expectile'
 
     if updates is not None:
       config.update(ConfigDict(updates).copy_and_resolve_references())
