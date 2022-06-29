@@ -16,8 +16,41 @@ from absl import logging
 from ml_collections import ConfigDict
 from ml_collections.config_dict import config_dict
 from ml_collections.config_flags import config_flags
+from tqdm import tqdm
 
 from utilities.jax_utils import init_rng
+
+
+def split_into_trajectories(observations, actions, rewards, dones_float, next_observations):
+  trajs = [[]]
+
+  for i in tqdm(range(len(observations))):
+    trajs[-1].append((observations[i], actions[i], rewards[i],
+                      dones_float[i], next_observations[i]))
+    if dones_float[i] == 1.0 and i + 1 < len(observations):
+      trajs.append([])
+
+  return trajs
+
+def normalize(dataset):
+  trajs = split_into_trajectories(
+    dataset['observations'],
+    dataset['actions'],
+    dataset['rewards'],
+    dataset['dones'],
+    dataset['next_observations'],
+  )
+
+  def compute_returns(traj):
+    episode_return = 0
+    for _, _, rew, _, _ in traj:
+      episode_return += rew
+    return episode_return
+
+  trajs.sort(key=compute_returns)
+
+  dataset['rewards'] /= compute_returns(trajs[-1]) - compute_returns(trajs[0])
+  dataset['rewards'] *= 1000.0
 
 
 class Timer(object):

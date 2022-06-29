@@ -3,10 +3,12 @@ import absl.flags
 
 import gym
 import numpy as np
+import chex
 
 import algos
 from algos.model import (
   FullyConnectedQFunction,
+  FullyConnectedVFunction,
   ResTanhGaussianPolicy,
   SamplerPolicyEncoder,
   ClipGaussianPolicy,
@@ -28,6 +30,7 @@ from utilities.utils import (
   get_user_flags,
   prefix_metrics,
   set_random_seed,
+  normalize
 )
 from viskit.logging import logger, setup_logger
 from pathlib import Path
@@ -38,7 +41,7 @@ SOTALogger = WandBLogger
 
 FLAGS_DEF = define_flags_with_default(
   env='walker2d-medium-v2',
-  algo='ConservativeSAC',
+  algo='IQL',
   max_traj_length=1000,
   seed=42,
   save_model=False,
@@ -46,8 +49,8 @@ FLAGS_DEF = define_flags_with_default(
   reward_scale=1.0,
   reward_bias=0.0,
   clip_action=0.999,
-  policy_arch='512-512-256',
-  qf_arch='512-512-256',
+  policy_arch='256-256',
+  qf_arch='256-256',
   orthogonal_init=False,
   policy_log_std_multiplier=1.0,
   policy_log_std_offset=-1.0,
@@ -63,11 +66,12 @@ FLAGS_DEF = define_flags_with_default(
   dataset='d4rl',
   rl_unplugged_task_class = 'control_suite',
   use_resnet=False,
-  use_layer_norm=True,
+  use_layer_norm=False,
   activation='elu',
   replay_buffer_size=1000000,
   n_env_steps_per_epoch=1000,
   online=False,
+  normalize_reward=False,
 )
 
 
@@ -77,6 +81,9 @@ def main(argv):
   algo_cfg = off_algo.get_default_config()
 
   variant = get_user_flags(FLAGS, FLAGS_DEF)
+  for k, v in algo_cfg.items():
+    variant[f'algo.{k}'] = v
+
   sota_logger = SOTALogger(
     config=FLAGS.logging, variant=variant, env_name=FLAGS.env
   )
@@ -112,6 +119,9 @@ def main(argv):
       )
       probs = dataset['rewards']
       probs = (probs - probs.min()) / (probs.max() - probs.min())
+
+      if FLAGS.normalize_reward:
+        normalize(dataset)
 
       dataset = Dataset(dataset)
       if FLAGS.sampler == 'online':
@@ -159,10 +169,12 @@ def main(argv):
   action_dim = eval_sampler.env.action_space.shape[0]
 
   if not FLAGS.use_resnet:
+    use_layer_norm = FLAGS.use_layer_norm
     if FLAGS.algo == 'MPO':
+      use_layer_norm = True
       policy = ClipGaussianPolicy(
         observation_dim, action_dim, FLAGS.policy_arch, FLAGS.orthogonal_init,
-        FLAGS.policy_log_std_multiplier, FLAGS.policy_log_std_offset, FLAGS.use_layer_norm,
+        FLAGS.policy_log_std_multiplier, FLAGS.policy_log_std_offset, use_layer_norm,
         FLAGS.activation,
       )
     else:
@@ -173,8 +185,17 @@ def main(argv):
 
     qf = FullyConnectedQFunction(
       observation_dim, action_dim, FLAGS.qf_arch, FLAGS.orthogonal_init,
-      FLAGS.use_layer_norm, FLAGS.activation,
+      use_layer_norm, FLAGS.activation,
     )
+    vf = None
+    if FLAGS.algo == 'IQL':
+      vf = FullyConnectedVFunction(
+        observation_dim,
+        FLAGS.qf_arch,
+        FLAGS.orthogonal_init,
+        use_layer_norm,
+        FLAGS.activation,
+      )
     encoder = IdentityEncoder(1, 1024, nn.relu)
   else:
     hidden_dim = algo_cfg.res_hidden_size
@@ -194,6 +215,8 @@ def main(argv):
         FLAGS.policy_log_std_offset,
         algo_cfg.head_blocks,
       )
+    if FLAGS.also == 'IQL':
+      raise NotImplementedError
     else:
       policy = ResTanhGaussianPolicy(
         observation_dim,
@@ -216,7 +239,10 @@ def main(argv):
     algo_cfg.target_entropy = -np.prod(eval_sampler.env.action_space.shape
                                        ).item()
 
-  agent = off_algo(algo_cfg, encoder, policy, qf)
+  if FLAGS.algo == 'IQL':
+    agent = off_algo(algo_cfg, encoder, policy, qf, vf)
+  else:
+    agent = off_algo(algo_cfg, encoder, policy, qf)
   sampler_policy = SamplerPolicyEncoder(agent, agent.train_params)
 
   viskit_metrics = {}

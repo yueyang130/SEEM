@@ -1,4 +1,5 @@
 from functools import partial
+from queue import Full
 from typing import Any
 
 import distrax
@@ -191,6 +192,30 @@ class FullyConnectedQFunction(nn.Module):
     )(
       x
     )
+    return jnp.squeeze(x, -1)
+  
+  @property
+  def input_size(self):
+    return self.observation_dim
+
+
+class FullyConnectedVFunction(nn.Module):
+  observation_dim: int
+  arch: str = '256-256'
+  orthogonal_init: bool = False
+  use_layer_norm: bool = False
+  activation: str = 'relu'
+
+  @nn.compact
+  def __call__(self, observations):
+    x = FullyConnectedNetwork(
+      output_dim=1,
+      arch=self.arch,
+      orthogonal_init=self.orthogonal_init,
+      use_layer_norm=self.use_layer_norm,
+      activation=self.activation
+    )(observations)
+
     return jnp.squeeze(x, -1)
   
   @property
