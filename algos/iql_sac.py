@@ -37,6 +37,7 @@ class IQL(object):
     config.head_blocks = 1
     config.expectile = 0.7
     config.awr_temperature = 3.0
+    config.loss_type = 'quantile'
 
     if updates is not None:
       config.update(ConfigDict(updates).copy_and_resolve_references())
@@ -159,7 +160,13 @@ class IQL(object):
         self.config.expectile,
         1 - self.config.expectile,
       )
-      expectile_loss = (expectile_weight * (diff ** 2)).mean()
+
+      if self.config.loss_type == 'expectile':
+        expectile_loss = (expectile_weight * (diff ** 2)).mean()
+      elif self.config.loss_type == 'quantile':
+        expectile_loss = (expectile_weight * (jnp.abs(diff))).mean()
+      else:
+        raise NotImplementedError
 
       return (expectile_loss,), locals()
     
