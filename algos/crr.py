@@ -36,12 +36,14 @@ class CRR(object):
       config.update(ConfigDict(updates).copy_and_resolve_references())
     return config
 
-  def __init__(self, config, encoder, policy, qf):
+  def __init__(self, config, encoder, policy, qf, decoupled_q=False):
     self.config = self.get_default_config(config)
+    self.decoupled_q = decoupled_q
     self.encoder = encoder
     self.policy = policy
     self.qf = qf
     self.observation_dim = policy.observation_dim
+    self.embedding_dim = policy.embedding_dim
     self.action_dim = policy.action_dim
 
     self._train_states = {}
@@ -61,7 +63,7 @@ class CRR(object):
     )
 
     policy_params = self.policy.init(
-      next_rng(), next_rng(), jnp.zeros((10, self.observation_dim))
+      next_rng(), next_rng(), jnp.zeros((10, self.embedding_dim))
     )
     self._train_states['policy'] = TrainState.create(
       params=policy_params,
@@ -70,7 +72,7 @@ class CRR(object):
     )
 
     qf_params = self.qf.init(
-      next_rng(), jnp.zeros((10, self.observation_dim)),
+      next_rng(), jnp.zeros((10, self.embedding_dim)),
       jnp.zeros((10, self.action_dim))
     )
     self._train_states['qf'] = TrainState.create(

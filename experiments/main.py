@@ -4,9 +4,12 @@ import absl.flags
 import gym
 import numpy as np
 import chex
+from torch import embedding_bag
 
 import algos
 from algos.model import (
+  DecoupledQFunction,
+  FullyConnectedNetwork,
   FullyConnectedQFunction,
   FullyConnectedVFunction,
   ResTanhGaussianPolicy,
@@ -49,6 +52,7 @@ FLAGS_DEF = define_flags_with_default(
   reward_scale=1.0,
   reward_bias=0.0,
   clip_action=0.999,
+  encoder_arch='64-64',
   policy_arch='256-256',
   qf_arch='256-256',
   orthogonal_init=False,
@@ -72,6 +76,8 @@ FLAGS_DEF = define_flags_with_default(
   n_env_steps_per_epoch=1000,
   online=False,
   normalize_reward=False,
+  embedding_dim=64,
+  decoupled_q=False,
 )
 
 
@@ -170,23 +176,45 @@ def main(argv):
 
   if not FLAGS.use_resnet:
     use_layer_norm = FLAGS.use_layer_norm
+    embedding_dim = observation_dim
+    encoder = IdentityEncoder(1, embedding_dim, nn.relu)
+    if FLAGS.decoupled_q:
+      embedding_dim = FLAGS.embedding_dim
+      encoder = FullyConnectedNetwork(
+        embedding_dim, FLAGS.encoder_arch, FLAGS.orthogonal_init,
+        use_layer_norm, 'relu'
+      )
     if FLAGS.algo == 'MPO':
       use_layer_norm = True
       policy = ClipGaussianPolicy(
-        observation_dim, action_dim, FLAGS.policy_arch, FLAGS.orthogonal_init,
+        observation_dim, embedding_dim, action_dim, FLAGS.policy_arch, FLAGS.orthogonal_init,
         FLAGS.policy_log_std_multiplier, FLAGS.policy_log_std_offset, use_layer_norm,
         FLAGS.activation,
       )
     else:
       policy = TanhGaussianPolicy(
-        observation_dim, action_dim, FLAGS.policy_arch, FLAGS.orthogonal_init,
+        observation_dim, embedding_dim, action_dim, FLAGS.policy_arch, FLAGS.orthogonal_init,
         FLAGS.policy_log_std_multiplier, FLAGS.policy_log_std_offset,
       )
 
     qf = FullyConnectedQFunction(
-      observation_dim, action_dim, FLAGS.qf_arch, FLAGS.orthogonal_init,
-      use_layer_norm, FLAGS.activation,
+      observation_dim,
+      action_dim,
+      FLAGS.qf_arch,
+      FLAGS.orthogonal_init,
+      use_layer_norm,
+      FLAGS.activation,
     )
+    if FLAGS.decoupled_q:
+      qf = DecoupledQFunction(
+        FLAGS.embedding_dim,
+        observation_dim,
+        action_dim,
+        FLAGS.qf_arch,
+        FLAGS.orthogonal_init,
+        use_layer_norm,
+        FLAGS.activation,
+      )
     vf = None
     if FLAGS.algo == 'IQL':
       vf = FullyConnectedVFunction(
@@ -196,7 +224,6 @@ def main(argv):
         use_layer_norm,
         FLAGS.activation,
       )
-    encoder = IdentityEncoder(1, 1024, nn.relu)
   else:
     hidden_dim = algo_cfg.res_hidden_size
     encoder_blocks = algo_cfg.encoder_blocks
@@ -242,7 +269,7 @@ def main(argv):
   if FLAGS.algo == 'IQL':
     agent = off_algo(algo_cfg, encoder, policy, qf, vf)
   else:
-    agent = off_algo(algo_cfg, encoder, policy, qf)
+    agent = off_algo(algo_cfg, encoder, policy, qf, decoupled_q=FLAGS.decoupled_q)
   sampler_policy = SamplerPolicyEncoder(agent, agent.train_params)
 
   viskit_metrics = {}

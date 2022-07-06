@@ -49,12 +49,14 @@ class ConservativeSAC(object):
       config.update(ConfigDict(updates).copy_and_resolve_references())
     return config
 
-  def __init__(self, config, encoder, policy, qf):
+  def __init__(self, config, encoder, policy, qf, decoupled_q=False):
     self.config = self.get_default_config(config)
+    self.decoupled_q = decoupled_q
     self.policy = policy
     self.qf = qf
     self.encoder = encoder
     self.observation_dim = policy.input_size
+    self.embedding_dim = policy.embedding_dim
     self.action_dim = policy.action_dim
 
     self._train_states = {}
@@ -74,7 +76,7 @@ class ConservativeSAC(object):
     )
 
     policy_params = self.policy.init(
-      next_rng(), next_rng(), jnp.zeros((10, self.observation_dim))
+      next_rng(), next_rng(), jnp.zeros((10, self.embedding_dim))
     )
     self._train_states['policy'] = TrainState.create(
       params=policy_params,
@@ -83,7 +85,7 @@ class ConservativeSAC(object):
     )
 
     qf1_params = self.qf.init(
-      next_rng(), jnp.zeros((10, self.observation_dim)),
+      next_rng(), jnp.zeros((10, self.embedding_dim)),
       jnp.zeros((10, self.action_dim))
     )
     self._train_states['qf1'] = TrainState.create(
@@ -92,7 +94,7 @@ class ConservativeSAC(object):
       apply_fn=None,
     )
     qf2_params = self.qf.init(
-      next_rng(), jnp.zeros((10, self.observation_dim)),
+      next_rng(), jnp.zeros((10, self.embedding_dim)),
       jnp.zeros((10, self.action_dim))
     )
     self._train_states['qf2'] = TrainState.create(

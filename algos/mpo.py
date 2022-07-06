@@ -1,5 +1,4 @@
 from copy import deepcopy
-from email import policy
 from functools import partial
 
 import jax
@@ -49,18 +48,27 @@ class MPO(object):
     config.epsilon_penalty = 1e-3
     config.epsilon_mean = 2.5e-3
     config.epsilon_stddev = 1e-6
+    config.use_quantile = True
+    config.quantile_ratio = 0.7
+    config.quantile_type = 'expectile'
+    config.trans_loss_weight = 10.
+    config.reward_loss_weight = 10.
+    config.mpo_weight = 1
+    config.sarsa = True
 
     if updates is not None:
       config.update(ConfigDict(updates).copy_and_resolve_references())
     return config
 
-  def __init__(self, config, encoder, policy, qf):
+  def __init__(self, config, encoder, policy, qf, decoupled_q=False):
     self.config = self.get_default_config(config)
     self.policy = policy
     self.qf = qf
     self.encoder = encoder
     self.observation_dim = policy.input_size
+    self.embedding_dim = policy.embedding_dim
     self.action_dim = policy.action_dim
+    self.decoupled_q = decoupled_q
 
     self._train_states = {}
 
@@ -82,7 +90,7 @@ class MPO(object):
     )
 
     policy_params = self.policy.init(
-      next_rng(), next_rng(), jnp.zeros((10, self.observation_dim))
+      next_rng(), next_rng(), jnp.zeros((10, self.embedding_dim))
     )
     self._train_states['policy'] = TrainState.create(
       params=policy_params,
@@ -94,7 +102,7 @@ class MPO(object):
     )
 
     qf_params = self.qf.init(
-      next_rng(), jnp.zeros((10, self.observation_dim)),
+      next_rng(), jnp.zeros((10, self.embedding_dim)),
       jnp.zeros((10, self.action_dim))
     )
 
@@ -109,7 +117,7 @@ class MPO(object):
  
     if self.config.double_q:
       qf2_params = self.qf.init(
-        next_rng(), jnp.zeros((10, self.observation_dim)),
+        next_rng(), jnp.zeros((10, self.embedding_dim)),
         jnp.zeros((10, self.action_dim))
       )
       self._train_states['qf2'] = TrainState.create(
@@ -197,11 +205,11 @@ class MPO(object):
         method=self.policy.get_tfd_dist
       )
       rng, split_rng = jax.random.split(rng)
+
       sampled_actions = target_action_dist.sample(
         self.config.num_samples,
         seed=split_rng
       )
-
       sampled_q_t = self.qf.apply(
         target_params['qf'],
         jnp.repeat(
@@ -236,8 +244,47 @@ class MPO(object):
       td_target = jax.lax.stop_gradient(
         rewards + (1. - dones) * discount * q_t
       )
+
       qf_loss = mse_loss(q_tm1, td_target)
       loss_collection['qf'] = qf_loss
+      if self.config.use_quantile and self.decoupled_q:
+        v_pred = self.qf.apply(
+          train_params['qf'],
+          embedding,
+          method=self.qf.get_value
+        )
+        q_pred = self.qf.apply(
+          target_params['qf'],
+          embedding,
+          actions
+        )
+        diff = jax.lax.stop_gradient(q_pred) - v_pred
+        quantile_weight = jnp.where(
+          diff > 0,
+          self.config.quantile_ratio,
+          1 - self.config.quantile_ratio
+        )
+        if self.config.quantile_type == 'expectile':
+          diff = diff ** 2
+        elif self.config.quantile_type == 'quantile':
+          diff = jnp.abs(diff)
+        else:
+          raise NotImplementedError
+        
+        quantile_loss = (quantile_weight * diff).mean()
+
+        v_target = self.qf.apply(
+          target_params['qf'],
+          next_embedding,
+          method=self.qf.get_value
+        )
+        quantile_target = jax.lax.stop_gradient(
+          rewards + (1. - dones) * discount * v_target
+        )
+
+        qf_loss = mse_loss(q_tm1, quantile_target)
+
+        loss_collection['qf'] = qf_loss + quantile_loss
 
       if self.config.double_q:
         q_tm1_2 = self.qf.apply(
@@ -247,16 +294,60 @@ class MPO(object):
         )
         qf_loss_2 = mse_loss(q_tm1_2, td_target)
         loss_collection['qf2'] = qf_loss_2
+      
+      if self.decoupled_q:
+        pred_r = self.qf.apply(
+          train_params['qf'],
+          embedding,
+          actions,
+          method=self.qf.get_reward
+        )
+        pred_state = self.qf.apply(
+          train_params['qf'],
+          embedding,
+          actions,
+          method=self.qf.trans_func
+        )
+        reward_loss = mse_loss(pred_r, rewards)
+        trans_loss = mse_loss(pred_state, jax.lax.stop_gradient(next_embedding))
+        loss_collection['qf'] += (
+          self.config.reward_loss_weight * reward_loss +
+          self.config.trans_loss_weight * trans_loss
+        )
 
       rng, split_rng = jax.random.split(rng)
 
-      policy_loss, stats = self._mpo_loss(
-        train_params['mpo'],
-        online_action_dist,
-        target_action_dist,
-        sampled_actions,
-        sampled_q_t,
-      )
+      if not self.config.sarsa:
+        policy_loss, stats = self._mpo_loss(
+          train_params['mpo'],
+          online_action_dist,
+          target_action_dist,
+          sampled_actions,
+          sampled_q_t,
+        )
+      else:
+        policy_tm1 = self.policy.apply(
+          train_params['policy'],
+          embedding,
+          method=self.policy.get_tfd_dist
+        )
+        behavior_tm1 = self.policy.apply(
+          target_params['policy'],
+          embedding,
+          method=self.policy.get_tfd_dist
+        )
+        q_tm1 = self.qf.apply(
+          target_params['qf'],
+          embedding,
+          actions
+        )
+        policy_loss, stats = self._mpo_loss(
+          train_params['mpo'],
+          policy_tm1,
+          behavior_tm1,
+          jnp.expand_dims(actions, axis=0),
+          jnp.expand_dims(q_tm1, axis=0),
+        )
       policy_loss = policy_loss[0]
 
       loss_collection['policy'] = policy_loss
@@ -266,7 +357,7 @@ class MPO(object):
       )
 
       mpo_loss = stats.loss_alpha + stats.loss_temperature
-      loss_collection['mpo'] = mpo_loss
+      loss_collection['mpo'] = mpo_loss * self.config.mpo_weight
       return tuple(loss_collection[key] for key in self.model_keys), locals()
 
     train_params = {key: train_states[key].params for key in self.model_keys}
@@ -299,6 +390,13 @@ class MPO(object):
       loss_alpha=mpo_stats.loss_alpha,
       loss_temperature=mpo_stats.loss_temperature,
     )
+
+    if self.decoupled_q:
+      metrics['reward_loss'] = aux_values['reward_loss']
+      metrics['trans_loss'] = aux_values['trans_loss']
+    
+    if self.config.use_quantile and self.decoupled_q:
+      metrics['quantile_loss'] = aux_values['quantile_loss']
 
     return new_train_states, new_target_params, metrics
 

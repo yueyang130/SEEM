@@ -1,6 +1,6 @@
 from functools import partial
 from queue import Full
-from typing import Any
+from typing import Any, Optional
 
 import distrax
 import jax
@@ -32,26 +32,6 @@ def multiple_action_q_function(forward):
     if multiple_actions:
       q_values = q_values.reshape(batch_size, -1)
     return q_values
-
-  return wrapped
-
-
-def multiple_action_decoupled_q_function(forward):
-  # Forward the q function with multiple actions on each state, to be used as a decorator
-  def wrapped(self, observations, actions, **kwargs):
-    multiple_actions = False
-    batch_size = observations.shape[0]
-    if actions.ndim == 3 and observations.ndim == 2:
-      multiple_actions = True
-      observations = extend_and_repeat(observations, 1, actions.shape[1]
-                                      ).reshape(-1, observations.shape[-1])
-      actions = actions.reshape(-1, actions.shape[-1])
-    q_values, rewards, values = forward(self, observations, actions, **kwargs)
-    if multiple_actions:
-      q_values = q_values.reshape(batch_size, -1)
-      rewards = rewards.reshape(batch_size, -1)
-      values = values.reshape(batch_size, -1)
-    return q_values, rewards, values
 
   return wrapped
 
@@ -224,6 +204,7 @@ class FullyConnectedVFunction(nn.Module):
 
 
 class DecoupledQFunction(nn.Module):
+  embedding_dim: int
   observation_dim: int
   action_dim: int
   arch: str = '256-256'
@@ -231,28 +212,50 @@ class DecoupledQFunction(nn.Module):
   use_layer_norm: bool = False
   activation: str = 'relu'
 
-  @nn.compact
-  @multiple_action_decoupled_q_function
+  def setup(self) -> None:
+    self.trans_net = FullyConnectedNetwork(
+      output_dim=self.embedding_dim,
+      arch=self.arch,
+      orthogonal_init=self.orthogonal_init,
+      use_layer_norm=self.use_layer_norm,
+      activation=self.activation
+    )
+    self.reward_net = FullyConnectedNetwork(
+      output_dim=1,
+      arch=self.arch,
+      orthogonal_init=self.orthogonal_init,
+      use_layer_norm=self.use_layer_norm,
+      activation=self.activation
+    )
+    self.value_net = FullyConnectedNetwork(
+      output_dim=1,
+      arch=self.arch,
+      orthogonal_init=self.orthogonal_init,
+      use_layer_norm=self.use_layer_norm,
+      activation=self.activation
+    )
+
+  @multiple_action_q_function
   def __call__(self, observations, actions) -> Any:
     x = jnp.concatenate([observations, actions], axis=-1)
-    reward = FullyConnectedNetwork(
-      output_dim=1,
-      arch=self.arch,
-      orthogonal_init=self.orthogonal_init,
-      use_layer_norm=self.use_layer_norm,
-      activation=self.activation
-    )(x)
-    value = FullyConnectedNetwork(
-      output_dim=1,
-      arch=self.arch,
-      orthogonal_init=self.orthogonal_init,
-      use_layer_norm=self.use_layer_norm,
-      activation=self.activation
-    )(observations)
+    next_state = self.trans_net(x)
+    reward = self.reward_net(next_state)
+    value = self.value_net(next_state)
 
-    reward = nn.tanh(reward)
-
-    return jnp.squeeze(reward + value, -1), reward, value
+    return jnp.squeeze(reward + value, -1)
+  
+  @multiple_action_q_function
+  def get_reward(self, observations, actions):
+    x = jnp.concatenate([observations, actions], axis=-1)
+    next_state = self.trans_net(x)
+    return jnp.squeeze(self.reward_net(next_state), -1)
+  
+  def get_value(self, observations):
+    return jnp.squeeze(self.value_net(observations), -1)
+  
+  def trans_func(self, observations, actions):
+    x = jnp.concatenate([observations, actions], axis=-1)
+    return self.trans_net(x)
 
 
 class ResQFunction(nn.Module):
@@ -293,6 +296,7 @@ class ResQFunction(nn.Module):
 
 class TanhGaussianPolicy(nn.Module):
   observation_dim: int
+  embedding_dim: int
   action_dim: int
   arch: str = '256-256'
   orthogonal_init: bool = False
