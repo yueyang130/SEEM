@@ -103,6 +103,13 @@ class D4RLDataset(Dataset):
     )
 
 
+def compute_returns(traj):
+  episode_return = 0
+  for _, _, rew, _, _, _ in traj:
+    episode_return += rew
+
+  return episode_return
+
 def get_traj_dataset(env, sorting=True):
   env = gym.make(env) if isinstance(env, str) else env
   dataset = D4RLDataset(env)
@@ -110,14 +117,6 @@ def get_traj_dataset(env, sorting=True):
     dataset.observations, dataset.actions, dataset.rewards, dataset.masks,
     dataset.dones_float, dataset.next_observations
   )
-
-  def compute_returns(traj):
-    episode_return = 0
-    for _, _, rew, _, _, _ in traj:
-      episode_return += rew
-
-    return episode_return
-
   if sorting:
     trajs.sort(key=compute_returns)
 

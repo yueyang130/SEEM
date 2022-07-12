@@ -147,3 +147,4 @@ data/dm_locomotion*
 ~/
 scripts/launch_job.sh
 *npy
+vis_results

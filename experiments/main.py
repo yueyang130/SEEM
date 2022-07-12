@@ -58,7 +58,8 @@ FLAGS_DEF = define_flags_with_default(
   orthogonal_init=False,
   policy_log_std_multiplier=1.0,
   policy_log_std_offset=-1.0,
-  n_epochs=2000,
+  # n_epochs=2000,
+  n_epochs=1200,
   bc_epochs=0,
   n_train_step_per_epoch=1000,
   eval_period=10,
@@ -273,6 +274,8 @@ def main(argv):
   sampler_policy = SamplerPolicyEncoder(agent, agent.train_params)
 
   viskit_metrics = {}
+  returns = []
+  normalized_returns = []
   for epoch in range(FLAGS.n_epochs):
     metrics = {'epoch': epoch}
 
@@ -316,6 +319,17 @@ def main(argv):
             for t in trajs
           ]
         )
+  
+        # get the average of the final 10 evaluations as performance
+        returns.append(metrics['average_return'])
+        normalized_returns.append(metrics['average_normalizd_return'])
+        metrics['average_10_return'] = np.mean(
+          returns[-min(10, len(returns)):]
+        )
+        metrics['average_10_normalizd_return'] = np.mean(
+          normalized_returns[-min(10, len(returns)):]
+        )
+
         if FLAGS.save_model:
           save_data = {'agent': agent, 'variant': variant, 'epoch': epoch}
           sota_logger.save_pickle(save_data, 'model.pkl')

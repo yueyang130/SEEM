@@ -15,6 +15,7 @@ COMMAND="${*:1}"
 ESCAPED_COMMAND=$(printf '%s\n' "$COMMAND" | sed -e 's/[\/&]/\\&/g')
 USER_ID=$(id -u)
 GROUP_ID=$(id -g)
+WANDB_API_KEY=85f6f61fb5d177921676661ec9935dc23efde92b
 
 CPU="${CPU:-4}"
 GPU="${GPU:-1}"

@@ -161,7 +161,7 @@ class WandBLogger(object):
   @staticmethod
   def get_default_config(updates=None):
     config = ConfigDict()
-    config.online = False
+    config.online = True
     config.prefix = 'JaxCQL'
     config.project = 'sac'
     config.output_dir = './experiment_output'
