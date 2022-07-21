@@ -39,11 +39,13 @@ class ConservativeSAC(object):
     config.cql_max_target_backup = False
     config.cql_clip_diff_min = -np.inf
     config.cql_clip_diff_max = np.inf
-    config.bc_mode = 'mse'  # 'mle'
+    config.bc_mode = 'mle'  # 'mle'
     config.bc_weight = 0.
     config.res_hidden_size = 1024
     config.encoder_blocks = 1
     config.head_blocks = 1
+    config.giwae = True
+    config.bc_weight_giwae = 0.5
 
     if updates is not None:
       config.update(ConfigDict(updates).copy_and_resolve_references())
@@ -192,6 +194,20 @@ class ConservativeSAC(object):
           method=self.policy.log_prob
         )
         rl_loss = (alpha * log_pi - log_probs).mean()
+      elif self.config.giwae:
+        log_probs = self.policy.apply(
+          train_params['policy'],
+          embedding,
+          actions,
+          method=self.policy.log_prob
+        )
+        bc_weight = self.config.bc_weight_giwae
+        rl_loss = (alpha * log_pi - log_probs * bc_weight).mean()
+        q_new_actions = jnp.minimum(
+          self.qf.apply(train_params['qf1'], embedding, new_actions),
+          self.qf.apply(train_params['qf2'], embedding, new_actions),
+        )
+        rl_loss += (-q_new_actions).mean()
       else:
         q_new_actions = jnp.minimum(
           self.qf.apply(train_params['qf1'], embedding, new_actions),
