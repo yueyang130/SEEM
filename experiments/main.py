@@ -49,8 +49,8 @@ FLAGS_DEF = define_flags_with_default(
   seed=42,
   save_model=False,
   batch_size=256,
-  reward_scale=1.0,
-  reward_bias=0.0,
+  reward_scale=1,
+  reward_bias=0,
   clip_action=0.999,
   encoder_arch='64-64',
   policy_arch='256-256',
@@ -76,7 +76,7 @@ FLAGS_DEF = define_flags_with_default(
   replay_buffer_size=1000000,
   n_env_steps_per_epoch=1000,
   online=False,
-  normalize_reward=False,
+  normalize_reward=True,
   embedding_dim=64,
   decoupled_q=False,
 )
@@ -119,6 +119,8 @@ def main(argv):
         algo_cfg.nstep,
         algo_cfg.discount,
       )
+
+
       dataset['rewards'
              ] = dataset['rewards'] * FLAGS.reward_scale + FLAGS.reward_bias
       dataset['actions'] = np.clip(
@@ -127,7 +129,11 @@ def main(argv):
       probs = dataset['rewards']
       probs = (probs - probs.min()) / (probs.max() - probs.min())
 
-      if FLAGS.normalize_reward:
+      if 'ant' in FLAGS.env:
+        # dataset['rewards'] = (dataset['rewards'] - 0.5) * 4
+        dataset['rewards'] = dataset['rewards'] - 1
+
+      elif FLAGS.normalize_reward:
         normalize(dataset)
 
       dataset = Dataset(dataset)

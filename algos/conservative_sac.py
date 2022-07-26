@@ -25,14 +25,14 @@ class ConservativeSAC(object):
     config.backup_entropy = False
     config.target_entropy = 0.0
     config.encoder_lr = 3e-4
-    config.policy_lr = 3e-4
+    config.policy_lr = 1e-4
     config.qf_lr = 3e-4
     config.optimizer_type = 'adam'
     config.soft_target_update_rate = 5e-3
     config.use_cql = True
     config.cql_n_actions = 10
     config.cql_importance_sample = True
-    config.cql_lagrange = False
+    config.cql_lagrange = True
     config.cql_target_action_gap = 1.0
     config.cql_temp = 1.0
     config.cql_min_q_weight = 5.0

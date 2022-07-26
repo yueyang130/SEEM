@@ -108,12 +108,24 @@ def get_d4rl_dataset(env, nstep=1, gamma=0.9):
   # else:
   # Always sort the dataset according to trajectory return
   dataset = get_nstep_dataset(env, nstep, gamma, sorting=True)
+  dones_float = np.zeros_like(dataset['rewards'])
+
+  for i in range(len(dones_float) - 1):
+    obs_diff = (
+      np.linalg.norm(dataset['observations'][i+1]
+      - dataset['next_observations'][i])
+    )
+    if obs_diff > 1e-6 or dataset['terminals'][i] == 1.0:
+      dones_float[i] = 1
+    else:
+      dones_float[i] = 0
   return dict(
     observations=dataset['observations'],
     actions=dataset['actions'],
     next_observations=dataset['next_observations'],
     rewards=dataset['rewards'],
     dones=dataset['terminals'].astype(np.float32),
+    dones_float=dones_float.astype(np.float32),
   )
 
 

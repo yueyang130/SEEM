@@ -21,7 +21,7 @@ from tqdm import tqdm
 from utilities.jax_utils import init_rng
 
 
-def split_into_trajectories(observations, actions, rewards, dones_float, next_observations):
+def split_into_trajectories(observations, actions, rewards, dones, dones_float, next_observations):
   trajs = [[]]
 
   for i in tqdm(range(len(observations))):
@@ -38,6 +38,7 @@ def normalize(dataset):
     dataset['actions'],
     dataset['rewards'],
     dataset['dones'],
+    dataset['dones_float'],
     dataset['next_observations'],
   )
 
