@@ -24,7 +24,7 @@ from openTSNE import TSNE
 
 
 FLAGS_DEF = define_flags_with_default(
-  env='halfcheetah-medium-v2',
+  env='antmaze-large-diverse-v0',
   max_traj_length=1000,
   seed=42,
   save_model=False,
@@ -79,7 +79,7 @@ def main(argv):
   rewards = (rewards - rewards.min()) / (rewards.max() - rewards.min())
   labels = np.floor((rewards * 10)).astype(np.int32)
 
-  data = np.load("/home/max/halfcheetah-medium-v2.npy")
+  data = np.load(f"/home/max/{FLAGS.env}.npy")
 
   plt.scatter(
     data[:, 0],

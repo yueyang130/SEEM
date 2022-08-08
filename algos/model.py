@@ -11,6 +11,10 @@ from utilities.jax_utils import extend_and_repeat, next_rng
 import tensorflow_probability.substrates.jax as tfp
 import tensorflow_probability.substrates.jax.distributions as tfd
 
+LOG_SIG_MAX = 2
+LOG_SIG_MIN = -5
+MEAN_MIN = -9.0
+MEAN_MAX = 9.0
 
 def update_target_network(main_params, target_params, tau):
   return jax.tree_multimap(
@@ -317,9 +321,17 @@ class TanhGaussianPolicy(nn.Module):
       observations = extend_and_repeat(observations, 1, actions.shape[1])
     base_network_output = self.base_network(observations)
     mean, log_std = jnp.split(base_network_output, 2, axis=-1)
+
+    # TODO (max): disable if we want to revert to the original model
+    # This is taken from the original CQL implimentation
+    mean = jnp.clip(mean, MEAN_MIN, MEAN_MAX)
     log_std = self.log_std_multiplier_module(
     ) * log_std + self.log_std_offset_module()
-    log_std = jnp.clip(log_std, -20.0, 2.0)
+
+    # TODO (max): disable if we want to revert to the original model
+    # This is taken from the original CQL implimentation
+    # The original LOG_SIG_MIN = -20, LOG_SIG_MAX = 2.0
+    log_std = jnp.clip(log_std, LOG_SIG_MIN, LOG_SIG_MAX)
     action_distribution = distrax.Transformed(
       distrax.MultivariateNormalDiag(mean, jnp.exp(log_std)),
       distrax.Block(distrax.Tanh(), ndims=1)
@@ -331,9 +343,10 @@ class TanhGaussianPolicy(nn.Module):
       observations = extend_and_repeat(observations, 1, repeat)
     base_network_output = self.base_network(observations)
     mean, log_std = jnp.split(base_network_output, 2, axis=-1)
+    mean = jnp.clip(mean, MEAN_MIN, MEAN_MAX)
     log_std = self.log_std_multiplier_module(
     ) * log_std + self.log_std_offset_module()
-    log_std = jnp.clip(log_std, -20.0, 2.0)
+    log_std = jnp.clip(log_std, LOG_SIG_MIN, LOG_SIG_MAX)
     action_distribution = distrax.Transformed(
       distrax.MultivariateNormalDiag(mean, jnp.exp(log_std)),
       distrax.Block(distrax.Tanh(), ndims=1)

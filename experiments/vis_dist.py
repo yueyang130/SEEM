@@ -1,3 +1,5 @@
+#!/usr/bin/python3
+
 import absl.app
 import absl.flags
 
@@ -26,7 +28,7 @@ import matplotlib.pyplot as plt
 
 
 FLAGS_DEF = define_flags_with_default(
-  env='halfcheetah-medium-v2',
+  env='antmaze-large-diverse-v0',
   max_traj_length=1000,
   seed=42,
   save_model=False,

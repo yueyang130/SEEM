@@ -30,7 +30,7 @@ class ConservativeSAC(object):
     config.optimizer_type = 'adam'
     config.soft_target_update_rate = 5e-3
     config.use_cql = True
-    config.cql_n_actions = 10
+    config.cql_n_actions = 50
     config.cql_importance_sample = True
     config.cql_lagrange = False
     config.cql_target_action_gap = 1.0
@@ -44,8 +44,8 @@ class ConservativeSAC(object):
     config.res_hidden_size = 1024
     config.encoder_blocks = 1
     config.head_blocks = 1
-    config.giwae = True
-    config.bc_weight_giwae = 0.5
+    config.ibal = True
+    config.bc_weight_ibal = 0.5
 
     if updates is not None:
       config.update(ConfigDict(updates).copy_and_resolve_references())
@@ -194,14 +194,14 @@ class ConservativeSAC(object):
           method=self.policy.log_prob
         )
         rl_loss = (alpha * log_pi - log_probs).mean()
-      elif self.config.giwae:
+      elif self.config.ibal:
         log_probs = self.policy.apply(
           train_params['policy'],
           embedding,
           actions,
           method=self.policy.log_prob
         )
-        bc_weight = self.config.bc_weight_giwae
+        bc_weight = self.config.bc_weight_ibal
         rl_loss = (alpha * log_pi - log_probs * bc_weight).mean()
         q_new_actions = jnp.minimum(
           self.qf.apply(train_params['qf1'], embedding, new_actions),
@@ -317,26 +317,11 @@ class ConservativeSAC(object):
           train_params['qf2'], embedding, cql_next_actions
         )
 
-        cql_cat_q1 = jnp.concatenate(
-          [
-            cql_q1_rand,
-            jnp.expand_dims(q1_pred, 1), cql_q1_next_actions,
-            cql_q1_current_actions
-          ],
-          axis=1
-        )
-        cql_cat_q2 = jnp.concatenate(
-          [
-            cql_q2_rand,
-            jnp.expand_dims(q2_pred, 1), cql_q2_next_actions,
-            cql_q2_current_actions
-          ],
-          axis=1
-        )
-        cql_std_q1 = jnp.std(cql_cat_q1, axis=1)
-        cql_std_q2 = jnp.std(cql_cat_q2, axis=1)
+        if self.config.ibal:
+          cql_cat_q1 = cql_q1_current_actions + cql_current_log_pis
+          cql_cat_q2 = cql_q2_current_actions + cql_current_log_pis
 
-        if self.config.cql_importance_sample:
+        elif self.config.cql_importance_sample:
           random_density = np.log(0.5**self.action_dim)
           cql_cat_q1 = jnp.concatenate(
             [
@@ -352,6 +337,26 @@ class ConservativeSAC(object):
             ],
             axis=1
           )
+        else:
+          cql_cat_q1 = jnp.concatenate(
+            [
+              cql_q1_rand,
+              jnp.expand_dims(q1_pred, 1), cql_q1_next_actions,
+              cql_q1_current_actions
+            ],
+            axis=1
+          )
+          cql_cat_q2 = jnp.concatenate(
+            [
+              cql_q2_rand,
+              jnp.expand_dims(q2_pred, 1), cql_q2_next_actions,
+              cql_q2_current_actions
+            ],
+            axis=1
+          )
+
+        cql_std_q1 = jnp.std(cql_cat_q1, axis=1)
+        cql_std_q2 = jnp.std(cql_cat_q2, axis=1)
 
         cql_qf1_ood = (
           jax.scipy.special

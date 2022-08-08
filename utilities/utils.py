@@ -163,7 +163,7 @@ class WandBLogger(object):
   def get_default_config(updates=None):
     config = ConfigDict()
     config.online = False
-    config.prefix = 'JaxCQL'
+    config.prefix = ''
     config.project = 'sac'
     config.output_dir = './experiment_output'
     config.random_delay = 0.0

@@ -76,7 +76,7 @@ FLAGS_DEF = define_flags_with_default(
   replay_buffer_size=1000000,
   n_env_steps_per_epoch=1000,
   online=False,
-  normalize_reward=True,
+  normalize_reward=False,
   embedding_dim=64,
   decoupled_q=False,
 )
@@ -90,9 +90,29 @@ def main(argv):
   variant = get_user_flags(FLAGS, FLAGS_DEF)
   for k, v in algo_cfg.items():
     variant[f'algo.{k}'] = v
+  
+  logging_configs = FLAGS.logging
 
+  is_adroit = any([w in FLAGS.env for w in ['human', 'cloned']])
+  is_kitchen = 'kitchen' in FLAGS.env
+  is_mujoco = any([w in FLAGS.env for w in ['hopper', 'walker', 'cheetah']])
+  is_antmaze = 'ant' in FLAGS.env
+
+  env_log_name = ''
+  if is_adroit:
+    env_log_name = 'Adroit'
+  elif is_kitchen:
+    env_log_name = 'Kitchen'
+  elif is_mujoco:
+    env_log_name = 'Mujoco'
+  elif is_antmaze:
+    env_log_name = 'AntMaze'
+  else:
+    raise NotImplementedError
+
+  logging_configs['project'] = f"{FLAGS.algo}-{env_log_name}"
   sota_logger = SOTALogger(
-    config=FLAGS.logging, variant=variant, env_name=FLAGS.env
+    config=logging_configs, variant=variant, env_name=FLAGS.env
   )
   setup_logger(
     variant=variant,
@@ -120,7 +140,6 @@ def main(argv):
         algo_cfg.discount,
       )
 
-
       dataset['rewards'
              ] = dataset['rewards'] * FLAGS.reward_scale + FLAGS.reward_bias
       dataset['actions'] = np.clip(
@@ -128,13 +147,15 @@ def main(argv):
       )
       probs = dataset['rewards']
       probs = (probs - probs.min()) / (probs.max() - probs.min())
-
-      if 'ant' in FLAGS.env:
-        # dataset['rewards'] = (dataset['rewards'] - 0.5) * 4
+      if is_antmaze:
         dataset['rewards'] = dataset['rewards'] - 1
-
-      elif FLAGS.normalize_reward:
+      elif is_kitchen or is_adroit:
+        dataset['rewards'] = (dataset['rewards'] - np.min(dataset['rewards'])) / np.max(dataset['rewards'])
+        dataset['rewards'] = (dataset['rewards'] - 0.5) * 2
+      elif FLAGS.normalize_reward and is_mujoco:
         normalize(dataset)
+      else:
+        print("No reward normalization performed")
 
       dataset = Dataset(dataset)
       if FLAGS.sampler == 'online':
@@ -181,6 +202,13 @@ def main(argv):
   observation_dim = eval_sampler.env.observation_space.shape[0]
   action_dim = eval_sampler.env.action_space.shape[0]
 
+  if 'ant' in FLAGS.env:
+    policy_arch = '256-256-256'
+    qf_arch = '256-256-256'
+  else:
+    policy_arch = FLAGS.policy_arch
+    qf_arch = FLAGS.qf_arch
+
   if not FLAGS.use_resnet:
     use_layer_norm = FLAGS.use_layer_norm
     embedding_dim = observation_dim
@@ -194,20 +222,20 @@ def main(argv):
     if FLAGS.algo == 'MPO':
       use_layer_norm = True
       policy = ClipGaussianPolicy(
-        observation_dim, embedding_dim, action_dim, FLAGS.policy_arch, FLAGS.orthogonal_init,
+        observation_dim, embedding_dim, action_dim, policy_arch, FLAGS.orthogonal_init,
         FLAGS.policy_log_std_multiplier, FLAGS.policy_log_std_offset, use_layer_norm,
         FLAGS.activation,
       )
     else:
       policy = TanhGaussianPolicy(
-        observation_dim, embedding_dim, action_dim, FLAGS.policy_arch, FLAGS.orthogonal_init,
+        observation_dim, embedding_dim, action_dim, policy_arch, FLAGS.orthogonal_init,
         FLAGS.policy_log_std_multiplier, FLAGS.policy_log_std_offset,
       )
 
     qf = FullyConnectedQFunction(
       observation_dim,
       action_dim,
-      FLAGS.qf_arch,
+      qf_arch,
       FLAGS.orthogonal_init,
       use_layer_norm,
       FLAGS.activation,
@@ -217,7 +245,7 @@ def main(argv):
         FLAGS.embedding_dim,
         observation_dim,
         action_dim,
-        FLAGS.qf_arch,
+        qf_arch,
         FLAGS.orthogonal_init,
         use_layer_norm,
         FLAGS.activation,
@@ -226,7 +254,7 @@ def main(argv):
     if FLAGS.algo == 'IQL':
       vf = FullyConnectedVFunction(
         observation_dim,
-        FLAGS.qf_arch,
+        qf_arch,
         FLAGS.orthogonal_init,
         use_layer_norm,
         FLAGS.activation,
