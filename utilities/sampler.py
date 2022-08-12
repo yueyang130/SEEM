@@ -58,8 +58,14 @@ class TrajSampler(object):
   def __init__(self, env, max_traj_length=1000):
     self.max_traj_length = max_traj_length
     self._env = env
+  
+  def norm_obs(self, obs, obs_statistics):
+    obs_mean, obs_std, obs_clip = obs_statistics
+    return np.clip(
+      (obs - obs_mean) / (obs_std + 1e-6), -obs_clip, obs_clip
+    )
 
-  def sample(self, policy, n_trajs, deterministic=False, replay_buffer=None):
+  def sample(self, policy, n_trajs, deterministic=False, replay_buffer=None, obs_statistics=(0, 1, np.inf)):
     trajs = []
     for _ in range(n_trajs):
       observations = []
@@ -69,12 +75,14 @@ class TrajSampler(object):
       dones = []
 
       observation = self.env.reset()
+      observation = self.norm_obs(observation, obs_statistics)
 
       for _ in range(self.max_traj_length):
         action = policy(
           observation.reshape(1, -1), deterministic=deterministic
         ).reshape(-1)
         next_observation, reward, done, _ = self.env.step(action)
+        next_observation = self.norm_obs(next_observation, obs_statistics)
         observations.append(observation)
         actions.append(action)
         rewards.append(reward)

@@ -54,6 +54,17 @@ def normalize(dataset):
   dataset['rewards'] *= 1000.0
 
 
+def norm_obs(ds, mean, std, clip_val):
+  ds['observations'] = (ds['observations'] - mean) / (std + 1e-6)
+  ds['next_observations'] = (ds['next_observations'] - mean) / (std + 1e-6)
+
+  ds['observations'] = np.clip(
+    ds['observations'], -clip_val, clip_val
+  )
+  ds['next_observations'] = np.clip(
+    ds['next_observations'], -clip_val, clip_val
+  )
+
 class Timer(object):
 
   def __init__(self):

@@ -33,7 +33,8 @@ from utilities.utils import (
   get_user_flags,
   prefix_metrics,
   set_random_seed,
-  normalize
+  normalize,
+  norm_obs
 )
 from viskit.logging import logger, setup_logger
 from pathlib import Path
@@ -79,6 +80,8 @@ FLAGS_DEF = define_flags_with_default(
   normalize_reward=False,
   embedding_dim=64,
   decoupled_q=False,
+  ibal=True,
+  cql_n_actions=50,
 )
 
 
@@ -87,13 +90,16 @@ def main(argv):
   off_algo = getattr(algos, FLAGS.algo)
   algo_cfg = off_algo.get_default_config()
 
+  algo_cfg['ibal'] = FLAGS.ibal
+  algo_cfg['cql_n_actions'] = FLAGS.cql_n_actions
+
   variant = get_user_flags(FLAGS, FLAGS_DEF)
   for k, v in algo_cfg.items():
     variant[f'algo.{k}'] = v
   
   logging_configs = FLAGS.logging
 
-  is_adroit = any([w in FLAGS.env for w in ['human', 'cloned']])
+  is_adroit = any([w in FLAGS.env for w in ['pen', 'hammer', 'door', 'relocate']])
   is_kitchen = 'kitchen' in FLAGS.env
   is_mujoco = any([w in FLAGS.env for w in ['hopper', 'walker', 'cheetah']])
   is_antmaze = 'ant' in FLAGS.env
@@ -123,6 +129,9 @@ def main(argv):
   )
 
   set_random_seed(FLAGS.seed)
+  obs_mean = 0
+  obs_std = 1
+  obs_clip = np.inf
 
   if FLAGS.dataset == 'd4rl':
     eval_sampler = TrajSampler(
@@ -147,9 +156,15 @@ def main(argv):
       )
       probs = dataset['rewards']
       probs = (probs - probs.min()) / (probs.max() - probs.min())
+
       if is_antmaze:
         dataset['rewards'] = dataset['rewards'] - 1
       elif is_kitchen or is_adroit:
+        obs_mean = dataset['observations'].mean()
+        obs_std = dataset['observations'].std()
+        obs_clip = 10
+        norm_obs(dataset, obs_mean, obs_std, obs_clip)
+
         dataset['rewards'] = (dataset['rewards'] - np.min(dataset['rewards'])) / np.max(dataset['rewards'])
         dataset['rewards'] = (dataset['rewards'] - 0.5) * 2
       elif FLAGS.normalize_reward and is_mujoco:
@@ -202,7 +217,7 @@ def main(argv):
   observation_dim = eval_sampler.env.observation_space.shape[0]
   action_dim = eval_sampler.env.action_space.shape[0]
 
-  if 'ant' in FLAGS.env:
+  if is_antmaze or is_kitchen or is_adroit:
     policy_arch = '256-256-256'
     qf_arch = '256-256-256'
   else:
@@ -338,7 +353,8 @@ def main(argv):
         trajs = eval_sampler.sample(
           sampler_policy.update_params(agent.train_params),
           FLAGS.eval_n_trajs,
-          deterministic=True
+          deterministic=True,
+          obs_statistics=(obs_mean, obs_std, obs_clip)
         )
 
         metrics['average_return'] = np.mean(
