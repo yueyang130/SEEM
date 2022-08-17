@@ -1,9 +1,12 @@
 import absl.app
 import absl.flags
+import os
 
 import gym
 import numpy as np
 import chex
+import pickle
+import json
 
 import algos
 from algos.model import (
@@ -59,11 +62,11 @@ FLAGS_DEF = define_flags_with_default(
   policy_log_std_multiplier=1.0,
   policy_log_std_offset=-1.0,
   # n_epochs=2000,
-  n_epochs=1200,
+  n_epochs=1,
   bc_epochs=0,
   n_train_step_per_epoch=1000,
   eval_period=10,
-  eval_n_trajs=5,
+  eval_n_trajs=1,
   # configs for trining scheme
   sampler='random', # online, random, balanced
   window_size=3000,  # window size for online sampler
@@ -81,6 +84,9 @@ FLAGS_DEF = define_flags_with_default(
   decoupled_q=False,
   ibal=True,
   cql_n_actions=50,
+  render=True,
+  run_id='',
+  model_id='final'
 )
 
 
@@ -104,8 +110,10 @@ def main(argv):
   is_antmaze = 'ant' in FLAGS.env
 
   env_log_name = ''
+  env_render_fn = 'render'
   if is_adroit:
     env_log_name = 'Adroit'
+    env_render_fn = 'mj_render'
   elif is_kitchen:
     env_log_name = 'Kitchen'
   elif is_mujoco:
@@ -132,62 +140,17 @@ def main(argv):
   obs_std = 1
   obs_clip = np.inf
 
+  with open("./data/statistics.json", "r") as fin:
+    statistics = json.load(fin)
+
   if FLAGS.dataset == 'd4rl':
     eval_sampler = TrajSampler(
-      gym.make(FLAGS.env).unwrapped, FLAGS.max_traj_length
+      gym.make(FLAGS.env).unwrapped, FLAGS.max_traj_length, render=FLAGS.render
     )
-    if FLAGS.online:
-      train_sampler = StepSampler(
-        gym.make(FLAGS.env).unwrapped, FLAGS.max_traj_length
-      )
-    else:
-      # Build dataset and sampler
-      dataset = get_d4rl_dataset(
-        eval_sampler.env,
-        algo_cfg.nstep,
-        algo_cfg.discount,
-      )
 
-      dataset['rewards'
-             ] = dataset['rewards'] * FLAGS.reward_scale + FLAGS.reward_bias
-      dataset['actions'] = np.clip(
-        dataset['actions'], -FLAGS.clip_action, FLAGS.clip_action
-      )
-      probs = dataset['rewards']
-      probs = (probs - probs.min()) / (probs.max() - probs.min())
+    if is_adroit or is_kitchen:
+      obs_mean, obs_std, obs_clip = statistics[FLAGS.env]
 
-      if is_antmaze:
-        dataset['rewards'] = dataset['rewards'] - 1
-      elif is_kitchen or is_adroit:
-        obs_mean = dataset['observations'].mean()
-        obs_std = dataset['observations'].std()
-        obs_clip = 10
-        norm_obs(dataset, obs_mean, obs_std, obs_clip)
-
-        dataset['rewards'] = (dataset['rewards'] - np.min(dataset['rewards'])) / np.max(dataset['rewards'])
-        dataset['rewards'] = (dataset['rewards'] - 0.5) * 2
-      elif FLAGS.normalize_reward and is_mujoco:
-        normalize(dataset)
-      else:
-        print("No reward normalization performed")
-
-      dataset = Dataset(dataset)
-      if FLAGS.sampler == 'online':
-        sampler = SlidingWindowSampler(
-          dataset.size(),
-          FLAGS.n_epochs * FLAGS.n_train_step_per_epoch,
-          FLAGS.window_size,
-          FLAGS.batch_size,
-        )
-      elif FLAGS.sampler == 'balanced':
-        sampler = BalancedSampler(
-          probs,
-          dataset.size(),
-          FLAGS.batch_size,
-        )
-      else:
-        sampler = RandSampler(dataset.size(), FLAGS.batch_size)
-      dataset.set_sampler(sampler)
 
   elif FLAGS.dataset == 'rl_unplugged':
     path = Path(__file__).absolute().parent.parent / 'data'
@@ -201,17 +164,10 @@ def main(argv):
 
     env = DM2Gym(dataset.env)
     eval_sampler = TrajSampler(
-      env, max_traj_length=FLAGS.max_traj_length
+      env, max_traj_length=FLAGS.max_traj_length, render=FLAGS.render
     )
-    if FLAGS.online:
-      train_sampler = StepSampler(
-        env, max_traj_length=FLAGS.max_traj_length
-      )
   else:
     raise NotImplementedError
-
-  if FLAGS.online:
-    replay_buffer = ReplayBuffer(FLAGS.replay_buffer_size)
 
   observation_dim = eval_sampler.env.observation_space.shape[0]
   action_dim = eval_sampler.env.action_space.shape[0]
@@ -319,83 +275,53 @@ def main(argv):
     agent = off_algo(algo_cfg, encoder, policy, qf, vf)
   else:
     agent = off_algo(algo_cfg, encoder, policy, qf, decoupled_q=FLAGS.decoupled_q)
+  
+  checkpoint_path = os.path.join(os.getcwd(), 'experiment_output', FLAGS.run_id)
+  checkpoint = os.path.join(checkpoint_path, f'model_{FLAGS.model_id}.pkl')
+  if os.path.exists(checkpoint):
+    with open(checkpoint, 'rb') as fin:
+      agent = pickle.load(fin)['agent']
+    
   sampler_policy = SamplerPolicyEncoder(agent, agent.train_params)
 
   viskit_metrics = {}
   returns = []
   normalized_returns = []
-  for epoch in range(FLAGS.n_epochs):
+  for epoch in tqdm.tqdm(range(FLAGS.n_epochs)):
     metrics = {'epoch': epoch}
 
-    if FLAGS.online:
-      with Timer() as rollout_timer:
-        train_sampler.sample(
-          sampler_policy.update_params(agent.train_params),
-          FLAGS.n_env_steps_per_epoch, deterministic=False,
-          replay_buffer=replay_buffer
-        )
-        metrics['env_steps'] = replay_buffer.total_steps
-        metrics['epoch'] = epoch
+    trajs = eval_sampler.sample(
+      sampler_policy.update_params(agent.train_params),
+      FLAGS.eval_n_trajs,
+      deterministic=True,
+      obs_statistics=(obs_mean, obs_std, obs_clip),
+      env_render_fn=env_render_fn,
+    )
 
-    with Timer() as train_timer:
-      for _ in tqdm.tqdm(range(FLAGS.n_train_step_per_epoch)):
-        if FLAGS.online:
-          batch = batch_to_jax(replay_buffer.sample(FLAGS.batch_size))
-        else:
-          batch = batch_to_jax(dataset.sample())
-        metrics.update(
-          prefix_metrics(agent.train(batch, bc=epoch < FLAGS.bc_epochs), 'agent')
-        )
-
-    with Timer() as eval_timer:
-      if epoch == 0 or (epoch + 1) % FLAGS.eval_period == 0:
-        trajs = eval_sampler.sample(
-          sampler_policy.update_params(agent.train_params),
-          FLAGS.eval_n_trajs,
-          deterministic=True,
-          obs_statistics=(obs_mean, obs_std, obs_clip)
-        )
-
-        metrics['average_return'] = np.mean(
-          [np.sum(t['rewards']) for t in trajs]
-        )
-        metrics['average_traj_length'] = np.mean(
-          [len(t['rewards']) for t in trajs]
-        )
-        metrics['average_normalizd_return'] = np.mean(
-          [
-            eval_sampler.env.get_normalized_score(np.sum(t['rewards']))
-            for t in trajs
-          ]
-        )
+    metrics['average_return'] = np.mean(
+      [np.sum(t['rewards']) for t in trajs]
+    )
+    metrics['average_traj_length'] = np.mean(
+      [len(t['rewards']) for t in trajs]
+    )
+    metrics['average_normalizd_return'] = np.mean(
+      [
+        eval_sampler.env.get_normalized_score(np.sum(t['rewards']))
+        for t in trajs
+      ]
+    )
   
-        # get the average of the final 10 evaluations as performance
-        returns.append(metrics['average_return'])
-        normalized_returns.append(metrics['average_normalizd_return'])
-        metrics['average_10_return'] = np.mean(
-          returns[-min(10, len(returns)):]
-        )
-        metrics['average_10_normalizd_return'] = np.mean(
-          normalized_returns[-min(10, len(returns)):]
-        )
+    # get the average of the final 10 evaluations as performance
+    returns.append(metrics['average_return'])
+    normalized_returns.append(metrics['average_normalizd_return'])
+    metrics['average_10_return'] = np.mean(
+      returns[-min(10, len(returns)):]
+    )
+    metrics['average_10_normalizd_return'] = np.mean(
+      normalized_returns[-min(10, len(returns)):]
+    )
 
-        if FLAGS.save_model:
-          save_data = {'agent': agent, 'variant': variant, 'epoch': epoch}
-          sota_logger.save_pickle(save_data, f'model_{epoch}.pkl')
-
-    if FLAGS.online:
-      metrics['rollout_time'] = rollout_timer()
-    metrics['train_time'] = train_timer()
-    metrics['eval_time'] = eval_timer()
-    metrics['epoch_time'] = train_timer() + eval_timer()
-    sota_logger.log(metrics)
-    viskit_metrics.update(metrics)
-    logger.record_dict(viskit_metrics)
-    logger.dump_tabular(with_prefix=False, with_timestamp=False)
-
-  if FLAGS.save_model:
-    save_data = {'agent': agent, 'variant': variant, 'epoch': epoch}
-    sota_logger.save_pickle(save_data, 'model_final.pkl')
+    print(metrics)
 
 
 if __name__ == '__main__':

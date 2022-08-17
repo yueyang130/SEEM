@@ -1,4 +1,10 @@
+from turtle import width
 import numpy as np
+import time
+import tqdm
+
+WIDTH = 250
+HEIGHT = 200
 
 
 class StepSampler(object):
@@ -55,9 +61,10 @@ class StepSampler(object):
 
 class TrajSampler(object):
 
-  def __init__(self, env, max_traj_length=1000):
+  def __init__(self, env, max_traj_length=1000, render=False):
     self.max_traj_length = max_traj_length
     self._env = env
+    self._render = render
   
   def norm_obs(self, obs, obs_statistics):
     obs_mean, obs_std, obs_clip = obs_statistics
@@ -65,7 +72,7 @@ class TrajSampler(object):
       (obs - obs_mean) / (obs_std + 1e-6), -obs_clip, obs_clip
     )
 
-  def sample(self, policy, n_trajs, deterministic=False, replay_buffer=None, obs_statistics=(0, 1, np.inf)):
+  def sample(self, policy, n_trajs, deterministic=False, replay_buffer=None, obs_statistics=(0, 1, np.inf), env_render_fn='render'):
     trajs = []
     for _ in range(n_trajs):
       observations = []
@@ -77,11 +84,15 @@ class TrajSampler(object):
       observation = self.env.reset()
       observation = self.norm_obs(observation, obs_statistics)
 
-      for _ in range(self.max_traj_length):
+      for _ in tqdm.tqdm(range(self.max_traj_length), disable=not self._render):
         action = policy(
           observation.reshape(1, -1), deterministic=deterministic
         ).reshape(-1)
         next_observation, reward, done, _ = self.env.step(action)
+        if self._render:
+          getattr(self.env, env_render_fn)()
+          time.sleep(0.01)
+
         next_observation = self.norm_obs(next_observation, obs_statistics)
         observations.append(observation)
         actions.append(action)
@@ -98,7 +109,7 @@ class TrajSampler(object):
 
         if done:
           break
-
+      
       trajs.append(
         dict(
           observations=np.array(observations, dtype=np.float32),
