@@ -81,6 +81,7 @@ FLAGS_DEF = define_flags_with_default(
   decoupled_q=False,
   ibal=True,
   cql_n_actions=50,
+  bc_weight_ibal=0.5
 )
 
 
@@ -91,6 +92,7 @@ def main(argv):
 
   algo_cfg['ibal'] = FLAGS.ibal
   algo_cfg['cql_n_actions'] = FLAGS.cql_n_actions
+  algo_cfg['bc_weight_ibal'] = FLAGS.bc_weight_ibal
 
   variant = get_user_flags(FLAGS, FLAGS_DEF)
   for k, v in algo_cfg.items():
