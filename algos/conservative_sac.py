@@ -11,6 +11,7 @@ from ml_collections import ConfigDict
 from algos.model import Scalar, update_target_network
 from utilities.jax_utils import mse_loss, next_rng, value_and_multi_grad
 from utilities.utils import prefix_metrics
+from tensorflow_probability.substrates import jax as tfp
 
 
 class ConservativeSAC(object):
@@ -46,6 +47,12 @@ class ConservativeSAC(object):
     config.head_blocks = 1
     config.ibal = True
     config.bc_weight_ibal = 0.5
+    config.unbiased_grad = False
+    config.unbiased_weight = 0.1
+    config.debias_mode = 'mcmc'
+    config.mcmc_burnin_steps = 5
+    config.mcmc_num_leapfrog_steps = 2
+    config.mcmc_step_size = 1
 
     if updates is not None:
       config.update(ConfigDict(updates).copy_and_resolve_references())
@@ -187,22 +194,10 @@ class ConservativeSAC(object):
 
       # get (offline)rl loss
       if bc:
-        log_probs = self.policy.apply(
-          train_params['policy'],
-          embedding,
-          actions,
-          method=self.policy.log_prob
-        )
-        rl_loss = (alpha * log_pi - log_probs).mean()
+        rl_loss = bc_loss
       elif self.config.ibal:
-        log_probs = self.policy.apply(
-          train_params['policy'],
-          embedding,
-          actions,
-          method=self.policy.log_prob
-        )
         bc_weight = self.config.bc_weight_ibal
-        rl_loss = (alpha * log_pi - log_probs * bc_weight).mean()
+        rl_loss = bc_weight * bc_loss
         q_new_actions = jnp.minimum(
           self.qf.apply(train_params['qf1'], embedding, new_actions),
           self.qf.apply(train_params['qf2'], embedding, new_actions),
@@ -216,10 +211,11 @@ class ConservativeSAC(object):
         rl_loss = (alpha * log_pi - q_new_actions).mean()
 
       # total loss for policy
-      policy_loss = rl_loss + self.config.bc_weight * bc_loss
+      policy_loss = rl_loss
       loss_collection['policy'] = policy_loss
       loss_collection['bc_loss'] = bc_loss
       loss_collection['rl_loss'] = rl_loss
+
       """ Q function loss """
       q1_pred = self.qf.apply(train_params['qf1'], embedding, actions)
       q2_pred = self.qf.apply(train_params['qf2'], embedding, actions)
@@ -318,8 +314,8 @@ class ConservativeSAC(object):
         )
 
         if self.config.ibal:
-          cql_cat_q1 = cql_q1_current_actions + cql_current_log_pis
-          cql_cat_q2 = cql_q2_current_actions + cql_current_log_pis
+          cql_cat_q1 = cql_q1_current_actions
+          cql_cat_q2 = cql_q2_current_actions
 
         elif self.config.cql_importance_sample:
           random_density = np.log(0.5**self.action_dim)
@@ -408,6 +404,69 @@ class ConservativeSAC(object):
         qf1_loss = qf1_loss + cql_min_qf1_loss
         qf2_loss = qf2_loss + cql_min_qf2_loss
 
+        if self.config.ibal and self.config.unbiased_grad:
+          if self.config.debias_mode == 'analytic':
+            rng, split_rng = jax.random.split(rng)
+            _, correction_log_pis = self.policy.apply(
+              train_params['policy'],
+              split_rng,
+              embedding,
+              repeat=self.config.cql_n_actions,
+              method=self.policy.double_dist_call
+            )
+            loss_collection['policy'] -= correction_log_pis.mean() * self.config.unbiased_weight
+          elif self.config.debias_mode == 'mcmc':
+            def log_prob(x):
+              action_prob = self.policy.apply(
+                train_params['policy'],
+                embedding,
+                x,
+                method=self.policy.log_prob
+              )
+              q = jnp.minimum(
+                self.qf.apply(train_params['qf1'], embedding, x),
+                self.qf.apply(train_params['qf2'], embedding, x),
+              )
+
+              # we ignore the E_{\pi(a | s)}[exp(Q(s, a))] here
+              # because this is a constant for a given s
+              return action_prob + q
+            
+            num_results = self.config.cql_n_actions
+            num_burnin_steps = self.config.mcmc_burnin_steps
+            adaptive_hmc = tfp.mcmc.SimpleStepSizeAdaptation(
+                tfp.mcmc.HamiltonianMonteCarlo(
+                    target_log_prob_fn=log_prob,
+                    num_leapfrog_steps=self.config.mcmc_num_leapfrog_steps,
+                    step_size=self.config.mcmc_step_size),
+                num_adaptation_steps=int(num_burnin_steps * 0.8))
+    
+            rng, split_rng = jax.random.split(rng)
+            mcmc_action_samples, _ = tfp.mcmc.sample_chain(
+              num_results=num_results,
+              num_burnin_steps=num_burnin_steps,
+              current_state=actions,
+              kernel=adaptive_hmc,
+              trace_fn=lambda _, pkr: pkr.inner_results.is_accepted,
+              seed=split_rng)
+            
+            mcmc_action_samples = jax.lax.stop_gradient(
+              jnp.transpose(
+                mcmc_action_samples, (1, 0, 2)
+              )
+            )
+
+            correction_log_pis = self.policy.apply(
+              train_params['policy'],
+              embedding,
+              mcmc_action_samples,
+              method=self.policy.log_prob
+            )
+            loss_collection['policy'] -= correction_log_pis.mean() * self.config.unbiased_weight
+                    
+          else:
+            raise NotImplementedError
+        
       loss_collection['qf1'] = qf1_loss
       loss_collection['qf2'] = qf2_loss
       loss_collection['encoder'] = (

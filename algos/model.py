@@ -344,6 +344,31 @@ class TanhGaussianPolicy(nn.Module):
     base_network_output = self.base_network(observations)
     mean, log_std = jnp.split(base_network_output, 2, axis=-1)
     mean = jnp.clip(mean, MEAN_MIN, MEAN_MAX)
+
+    log_std = self.log_std_multiplier_module(
+    ) * log_std + self.log_std_offset_module()
+    log_std = jnp.clip(log_std, LOG_SIG_MIN, LOG_SIG_MAX)
+    action_distribution = distrax.Transformed(
+      distrax.MultivariateNormalDiag(mean, jnp.exp(log_std)),
+      distrax.Block(distrax.Tanh(), ndims=1)
+    )
+    if deterministic:
+      samples = jnp.tanh(mean)
+      log_prob = action_distribution.log_prob(samples)
+    else:
+      samples, log_prob = action_distribution.sample_and_log_prob(seed=rng)
+
+    return samples, log_prob
+ 
+  def double_dist_call(self, rng, observations, deterministic=False, repeat=None):
+    if repeat is not None:
+      observations = extend_and_repeat(observations, 1, repeat)
+    base_network_output = self.base_network(observations)
+    mean, log_std = jnp.split(base_network_output, 2, axis=-1)
+
+    log_std = log_std - 0.5 * jnp.log(2)
+
+    mean = jnp.clip(mean, MEAN_MIN, MEAN_MAX)
     log_std = self.log_std_multiplier_module(
     ) * log_std + self.log_std_offset_module()
     log_std = jnp.clip(log_std, LOG_SIG_MIN, LOG_SIG_MAX)

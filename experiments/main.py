@@ -44,7 +44,7 @@ SOTALogger = WandBLogger
 
 FLAGS_DEF = define_flags_with_default(
   env='walker2d-medium-v2',
-  algo='IQL',
+  algo='ConservativeSAC',
   max_traj_length=1000,
   seed=42,
   save_model=False,
@@ -81,7 +81,9 @@ FLAGS_DEF = define_flags_with_default(
   decoupled_q=False,
   ibal=True,
   cql_n_actions=50,
-  bc_weight_ibal=0.5
+  bc_weight_ibal=0.5,
+  unbiased_grad=True,
+  unbiased_weight=0.1,
 )
 
 
@@ -93,6 +95,8 @@ def main(argv):
   algo_cfg['ibal'] = FLAGS.ibal
   algo_cfg['cql_n_actions'] = FLAGS.cql_n_actions
   algo_cfg['bc_weight_ibal'] = FLAGS.bc_weight_ibal
+  algo_cfg['unbiased_grad'] = FLAGS.unbiased_grad
+  algo_cfg['unbiased_weight'] = FLAGS.unbiased_weight
 
   variant = get_user_flags(FLAGS, FLAGS_DEF)
   for k, v in algo_cfg.items():

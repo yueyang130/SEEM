@@ -149,3 +149,4 @@ scripts/launch_job.sh
 *npy
 vis_results
 logs/
+temp/
