@@ -53,6 +53,7 @@ class ConservativeSAC(object):
     config.mcmc_burnin_steps = 5
     config.mcmc_num_leapfrog_steps = 2
     config.mcmc_step_size = 1
+    config.ibal_bc = True
 
     if updates is not None:
       config.update(ConfigDict(updates).copy_and_resolve_references())
@@ -195,7 +196,7 @@ class ConservativeSAC(object):
       # get (offline)rl loss
       if bc:
         rl_loss = bc_loss
-      elif self.config.ibal:
+      elif self.config.ibal and self.config.ibal_bc:
         bc_weight = self.config.bc_weight_ibal
         rl_loss = bc_weight * bc_loss
         q_new_actions = jnp.minimum(

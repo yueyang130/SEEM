@@ -84,6 +84,10 @@ FLAGS_DEF = define_flags_with_default(
   bc_weight_ibal=0.5,
   unbiased_grad=True,
   unbiased_weight=0.1,
+  debias_mode='mcmc',
+  mcmc_burnin_steps=5,
+  ibal_bc=True,
+  use_cql=True,
 )
 
 
@@ -92,11 +96,9 @@ def main(argv):
   off_algo = getattr(algos, FLAGS.algo)
   algo_cfg = off_algo.get_default_config()
 
-  algo_cfg['ibal'] = FLAGS.ibal
-  algo_cfg['cql_n_actions'] = FLAGS.cql_n_actions
-  algo_cfg['bc_weight_ibal'] = FLAGS.bc_weight_ibal
-  algo_cfg['unbiased_grad'] = FLAGS.unbiased_grad
-  algo_cfg['unbiased_weight'] = FLAGS.unbiased_weight
+  for k in FLAGS:
+    if k in algo_cfg:
+      algo_cfg[k] = getattr(FLAGS, k)
 
   variant = get_user_flags(FLAGS, FLAGS_DEF)
   for k, v in algo_cfg.items():
