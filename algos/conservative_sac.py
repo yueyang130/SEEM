@@ -54,6 +54,7 @@ class ConservativeSAC(object):
     config.mcmc_num_leapfrog_steps = 2
     config.mcmc_step_size = 1
     config.ibal_bc = True
+    config.use_infonce = False
 
     if updates is not None:
       config.update(ConfigDict(updates).copy_and_resolve_references())
@@ -318,6 +319,20 @@ class ConservativeSAC(object):
           cql_cat_q1 = cql_q1_current_actions
           cql_cat_q2 = cql_q2_current_actions
 
+          if self.config.use_infonce:
+            cql_cat_q1 = jnp.concatenate(
+              [
+                cql_cat_q1,
+                jnp.expand_dims(q1_pred, 1)
+              ], axis=1
+            )
+            cql_cat_q2 = jnp.concatenate(
+              [
+                cql_cat_q2,
+                jnp.expand_dims(q2_pred, 1)
+              ], axis=1
+            )
+
         elif self.config.cql_importance_sample:
           random_density = np.log(0.5**self.action_dim)
           cql_cat_q1 = jnp.concatenate(
@@ -351,7 +366,6 @@ class ConservativeSAC(object):
             ],
             axis=1
           )
-
         cql_std_q1 = jnp.std(cql_cat_q1, axis=1)
         cql_std_q2 = jnp.std(cql_cat_q2, axis=1)
 

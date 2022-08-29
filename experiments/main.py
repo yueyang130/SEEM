@@ -88,6 +88,7 @@ FLAGS_DEF = define_flags_with_default(
   mcmc_burnin_steps=5,
   ibal_bc=True,
   use_cql=True,
+  use_infonce=False
 )
 
 
