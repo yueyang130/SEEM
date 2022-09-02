@@ -55,6 +55,9 @@ class ConservativeSAC(object):
     config.mcmc_step_size = 1
     config.ibal_bc = True
     config.use_infonce = False
+    config.gmine = False
+    config.fmine = False
+    config.log_k_norm = True
 
     if updates is not None:
       config.update(ConfigDict(updates).copy_and_resolve_references())
@@ -366,6 +369,11 @@ class ConservativeSAC(object):
             ],
             axis=1
           )
+        
+        if self.config.log_k_norm:
+          cql_cat_q1 = cql_cat_q1 - jnp.log(cql_cat_q1.shape[0])
+          cql_cat_q2 = cql_cat_q2 - jnp.log(cql_cat_q2.shape[0])
+
         cql_std_q1 = jnp.std(cql_cat_q1, axis=1)
         cql_std_q2 = jnp.std(cql_cat_q2, axis=1)
 
@@ -415,6 +423,42 @@ class ConservativeSAC(object):
           cql_min_qf2_loss = cql_qf2_diff * self.config.cql_min_q_weight
           alpha_prime_loss = 0.0
           alpha_prime = 0.0
+        
+        if self.config.gmine:
+          cql_qf1_diff = jnp.clip(
+            cql_qf1_ood - q1_pred,
+            self.config.cql_clip_diff_min,
+            self.config.cql_clip_diff_max,
+          )
+          cql_qf2_diff = jnp.clip(
+            cql_qf2_ood - q2_pred,
+            self.config.cql_clip_diff_min,
+            self.config.cql_clip_diff_max,
+          )
+          cql_qf1_diff = jax.scipy.special.logsumexp(
+            cql_qf1_diff
+          ) - jnp.log(cql_qf1_diff.shape[0])
+          cql_qf2_diff = jax.scipy.special.logsumexp(
+            cql_qf2_diff
+          ) - jnp.log(cql_qf2_diff.shape[0])
+
+          cql_min_qf1_loss = cql_qf1_diff * self.config.cql_min_q_weight
+          cql_min_qf2_loss = cql_qf2_diff * self.config.cql_min_q_weight
+
+        elif self.config.fmine:
+          cql_qf1_diff = jnp.clip(
+            cql_qf1_ood - q1_pred,
+            self.config.cql_clip_diff_min,
+            self.config.cql_clip_diff_max,
+          ) - 1
+          cql_qf2_diff = jnp.clip(
+            cql_qf2_ood - q2_pred,
+            self.config.cql_clip_diff_min,
+            self.config.cql_clip_diff_max,
+          ) - 1
+
+          cql_min_qf1_loss = jnp.exp(cql_qf1_diff).mean() * self.config.cql_min_q_weight
+          cql_min_qf2_loss = jnp.exp(cql_qf2_diff).mean() * self.config.cql_min_q_weight
 
         qf1_loss = qf1_loss + cql_min_qf1_loss
         qf2_loss = qf2_loss + cql_min_qf2_loss
@@ -477,7 +521,7 @@ class ConservativeSAC(object):
               mcmc_action_samples,
               method=self.policy.log_prob
             )
-            loss_collection['policy'] -= correction_log_pis.mean() * self.config.unbiased_weight
+            loss_collection['policy'] += correction_log_pis.mean() * self.config.unbiased_weight
                     
           else:
             raise NotImplementedError

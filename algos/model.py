@@ -298,6 +298,77 @@ class ResQFunction(nn.Module):
     return hs[0]
 
 
+
+class GaussianPolicy(nn.Module):
+  observation_dim: int
+  embedding_dim: int
+  action_dim: int
+  arch: str = '256-256'
+  orthogonal_init: bool = False
+  log_std_multiplier: float = 1.0
+  log_std_offset: float = -1.0
+
+  def setup(self):
+    self.base_network = FullyConnectedNetwork(
+      output_dim=2 * self.action_dim,
+      arch=self.arch,
+      orthogonal_init=self.orthogonal_init
+    )
+    self.log_std_multiplier_module = Scalar(self.log_std_multiplier)
+    self.log_std_offset_module = Scalar(self.log_std_offset)
+
+  def log_prob(self, observations, actions):
+    if actions.ndim == 3:
+      observations = extend_and_repeat(observations, 1, actions.shape[1])
+    base_network_output = self.base_network(observations)
+    mean, log_std = jnp.split(base_network_output, 2, axis=-1)
+
+    action_distribution = distrax.MultivariateNormalDiag(
+      mean, jnp.exp(log_std)
+    )
+    return action_distribution.log_prob(actions)
+
+  def __call__(self, rng, observations, deterministic=False, repeat=None):
+    if repeat is not None:
+      observations = extend_and_repeat(observations, 1, repeat)
+    base_network_output = self.base_network(observations)
+    mean, log_std = jnp.split(base_network_output, 2, axis=-1)
+
+    action_distribution = distrax.MultivariateNormalDiag(
+      mean, jnp.exp(log_std)
+    )
+ 
+    if deterministic:
+      log_prob = action_distribution.log_prob(samples)
+    else:
+      samples, log_prob = action_distribution.sample_and_log_prob(seed=rng)
+
+    return samples, log_prob
+ 
+  def double_dist_call(self, rng, observations, deterministic=False, repeat=None):
+    if repeat is not None:
+      observations = extend_and_repeat(observations, 1, repeat)
+    base_network_output = self.base_network(observations)
+    mean, log_std = jnp.split(base_network_output, 2, axis=-1)
+
+    log_std = log_std - 0.5 * jnp.log(2)
+
+    action_distribution = distrax.MultivariateNormalDiag(
+      mean, jnp.exp(log_std)
+    )
+ 
+    if deterministic:
+      log_prob = action_distribution.log_prob(samples)
+    else:
+      samples, log_prob = action_distribution.sample_and_log_prob(seed=rng)
+
+    return samples, log_prob
+  
+  @property
+  def input_size(self):
+    return self.observation_dim
+
+
 class TanhGaussianPolicy(nn.Module):
   observation_dim: int
   embedding_dim: int
