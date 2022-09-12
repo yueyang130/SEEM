@@ -63,7 +63,7 @@ FLAGS_DEF = define_flags_with_default(
   bc_epochs=0,
   n_train_step_per_epoch=1000,
   eval_period=10,
-  eval_n_trajs=5,
+  eval_n_trajs=10,
   # configs for trining scheme
   sampler='random', # online, random, balanced
   window_size=3000,  # window size for online sampler

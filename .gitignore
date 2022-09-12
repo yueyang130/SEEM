@@ -151,3 +151,4 @@ vis_results
 logs/
 temp/
 *pkl
+*pdf
