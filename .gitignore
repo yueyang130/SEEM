@@ -1,0 +1,9 @@
+k8s
+# .gitignore
+Makefile
+*.sh
+scripts
+*.yaml
+__pycache__
+results
+wandb

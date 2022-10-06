@@ -4,7 +4,7 @@ import gym
 import argparse
 import os
 import d4rl
-
+import wandb
 import utils
 import TD3_BC
 
@@ -55,6 +55,7 @@ if __name__ == "__main__":
 	# TD3 + BC
 	parser.add_argument("--alpha", default=2.5)
 	parser.add_argument("--normalize", default=True)
+	parser.add_argument("--tag", default='', type=str)
 	args = parser.parse_args()
 
 	file_name = f"{args.policy}_{args.env}_{args.seed}"
@@ -62,11 +63,15 @@ if __name__ == "__main__":
 	print(f"Policy: {args.policy}, Env: {args.env}, Seed: {args.seed}")
 	print("---------------------------------------")
 
+	wandb.init(project="TD3_BC", config={"env": args.env, "seed": args.seed, "tag": args.tag,
+			})
+
 	if not os.path.exists("./results"):
 		os.makedirs("./results")
 
 	if args.save_model and not os.path.exists("./models"):
 		os.makedirs("./models")
+
 
 	env = gym.make(args.env)
 
@@ -115,5 +120,7 @@ if __name__ == "__main__":
 		if (t + 1) % args.eval_freq == 0:
 			print(f"Time steps: {t+1}")
 			evaluations.append(eval_policy(policy, args.env, args.seed, mean, std))
+			wandb.log({f'eval/score': evaluations[-1]}, step=t+1)
+			wandb.log({f'eval/avg10_score': np.mean(evaluations[-min(10, len(evaluations)):])}, step=t+1)
 			np.save(f"./results/{file_name}", evaluations)
 			if args.save_model: policy.save(f"./models/{file_name}")
