@@ -7,7 +7,7 @@ import d4rl
 import wandb
 import utils
 import TD3_BC
-
+import time
 
 # Runs policy for X episodes and returns D4RL score
 # A fixed seed is used for the eval environment
@@ -55,15 +55,30 @@ if __name__ == "__main__":
 	# TD3 + BC
 	parser.add_argument("--alpha", default=2.5)
 	parser.add_argument("--normalize", default=True)
+	# rebalance
+	parser.add_argument("--base_prob", default=0.0, type=float)
+	parser.add_argument("--resample", action="store_true")
+	parser.add_argument("--reweight", action="store_true")
+	parser.add_argument("--reweight_eval", default=1, type=int)
+	parser.add_argument("--reweight_improve", default=1, type=int)
+	parser.add_argument("--reweight_constraint", default=1, type=int)
 	parser.add_argument("--tag", default='', type=str)
 	args = parser.parse_args()
+
+	# resample and reweight can not been applied together
+	assert not args.resample or not args.reweight
 
 	file_name = f"{args.policy}_{args.env}_{args.seed}"
 	print("---------------------------------------")
 	print(f"Policy: {args.policy}, Env: {args.env}, Seed: {args.seed}")
 	print("---------------------------------------")
 
-	wandb.init(project="TD3_BC", config={"env": args.env, "seed": args.seed, "tag": args.tag,
+	wandb.init(project="TD3_BC", config={
+			"env": args.env, "seed": args.seed, 
+			"resample": args.resample, "reweight": args.reweight, "p_base": args.base_prob,
+			"reweight_eval": args.reweight_eval, "reweight_improve": args.reweight_improve,
+			"reweight_constraint": args.reweight_constraint,
+			"tag": args.tag,
 			})
 
 	if not os.path.exists("./results"):
@@ -96,7 +111,10 @@ if __name__ == "__main__":
 		"noise_clip": args.noise_clip * max_action,
 		"policy_freq": args.policy_freq,
 		# TD3 + BC
-		"alpha": args.alpha
+		"alpha": args.alpha, 
+		"reweight_eval": args.reweight_eval, 
+		"reweight_improve": args.reweight_improve,
+		"reweight_constraint": args.reweight_constraint,
 	}
 
 	# Initialize policy
@@ -106,21 +124,29 @@ if __name__ == "__main__":
 		policy_file = file_name if args.load_model == "default" else args.load_model
 		policy.load(f"./models/{policy_file}")
 
-	replay_buffer = utils.ReplayBuffer(state_dim, action_dim)
+
+	replay_buffer = utils.ReplayBuffer(state_dim, action_dim, args.batch_size,
+		base_prob=args.base_prob, resample=args.resample, reweight=args.reweight)
 	replay_buffer.convert_D4RL(d4rl.qlearning_dataset(env))
 	if args.normalize:
 		mean,std = replay_buffer.normalize_states() 
 	else:
 		mean,std = 0,1
 	
+	# time0 = time.time()
 	evaluations = []
 	for t in range(int(args.max_timesteps)):
-		policy.train(replay_buffer, args.batch_size)
+		policy.train(replay_buffer)
 		# Evaluate episode
 		if (t + 1) % args.eval_freq == 0:
 			print(f"Time steps: {t+1}")
 			evaluations.append(eval_policy(policy, args.env, args.seed, mean, std))
 			wandb.log({f'eval/score': evaluations[-1]}, step=t+1)
 			wandb.log({f'eval/avg10_score': np.mean(evaluations[-min(10, len(evaluations)):])}, step=t+1)
-			np.save(f"./results/{file_name}", evaluations)
+			# np.save(f"./results/{file_name}", evaluations)
 			if args.save_model: policy.save(f"./models/{file_name}")
+		# if (t + 1) % 100 == 0:
+		# 	dt = time.time() - time0
+		# 	time0 += dt
+		# 	print(f"Time steps: {t+1}, speed: {round(100/dt, 1)}itr/s")
+		

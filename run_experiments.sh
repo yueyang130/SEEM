@@ -37,10 +37,34 @@ for ((i=0;i<5;i+=1))
 do 
 	for env in ${envs[*]}
 	do
-		PRIORITY=low NS=offrl make run cmd="python main.py --env $env --seed $i"
+		PRIORITY=low NS=offrl make run cmd="python main.py --env $env --seed $i \
+					--resample --tag resample"
 	    sleep 5;
 		
 	done
 done
 
-# PRIORITY=low NS=offrl make run cmd="python main.py --env hopper-random-v2 --seed 0 & && python main.py --env hopper-random-v2 --seed 1 & && wait"
+for ((i=0;i<5;i+=1))
+do 
+	for env in ${envs[*]}
+	do
+		PRIORITY=low NS=offrl make run cmd="python main.py --env $env --seed $i \
+					--reweight --tag reweight"
+	    sleep 5;
+		
+	done
+done
+
+for ((i=0;i<5;i+=1))
+do 
+	for env in ${envs[*]}
+	do
+		PRIORITY=low NS=offrl make run cmd="python main.py --env $env --seed $i \
+					--reweight --reweight_eval=false --reweight_improve=false  --tag reweight_constraint"
+	    sleep 5;
+		
+	done
+done
+
+
+# PRIORITY=low NS=offrl make run cmd="python main.py --env hopper-random-v2 --seed 0"

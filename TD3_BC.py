@@ -68,6 +68,9 @@ class TD3_BC(object):
 		state_dim,
 		action_dim,
 		max_action,
+		reweight_eval,
+		reweight_improve,
+		reweight_constraint,
 		discount=0.99,
 		tau=0.005,
 		policy_noise=0.2,
@@ -92,6 +95,10 @@ class TD3_BC(object):
 		self.policy_freq = policy_freq
 		self.alpha = alpha
 
+		self.reweight_eval = reweight_eval
+		self.reweight_improve = reweight_improve
+		self.reweight_constraint = reweight_constraint
+
 		self.total_it = 0
 
 
@@ -100,11 +107,11 @@ class TD3_BC(object):
 		return self.actor(state).cpu().data.numpy().flatten()
 
 
-	def train(self, replay_buffer, batch_size=256):
+	def train(self, replay_buffer):
 		self.total_it += 1
 
 		# Sample replay buffer 
-		state, action, next_state, reward, not_done = replay_buffer.sample(batch_size)
+		state, action, next_state, reward, not_done, weight = replay_buffer.sample()
 
 		with torch.no_grad():
 			# Select action according to policy and add clipped noise
@@ -125,7 +132,10 @@ class TD3_BC(object):
 		current_Q1, current_Q2 = self.critic(state, action)
 
 		# Compute critic loss
-		critic_loss = F.mse_loss(current_Q1, target_Q) + F.mse_loss(current_Q2, target_Q)
+		critic_loss = F.mse_loss(current_Q1, target_Q, reduction='none') + F.mse_loss(current_Q2, target_Q, reduction='none')
+		if self.reweight_eval:
+			critic_loss *= weight
+		critic_loss = critic_loss.mean()
 
 		# Optimize the critic
 		self.critic_optimizer.zero_grad()
@@ -140,7 +150,17 @@ class TD3_BC(object):
 			Q = self.critic.Q1(state, pi)
 			lmbda = self.alpha/Q.abs().mean().detach()
 
-			actor_loss = -lmbda * Q.mean() + F.mse_loss(pi, action) 
+			# policy improvement
+			actor_loss = Q
+			if self.reweight_improve:
+				actor_loss *= weight
+			actor_loss = actor_loss.mean()
+			# policy constraint
+			constraint_loss = F.mse_loss(pi, action, reduction='none') 
+			if self.reweight_constraint:
+				constraint_loss *= weight
+			constraint_loss = constraint_loss.mean()
+			actor_loss = -lmbda * actor_loss + constraint_loss
 			
 			# Optimize the actor 
 			self.actor_optimizer.zero_grad()
