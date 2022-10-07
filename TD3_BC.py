@@ -71,6 +71,7 @@ class TD3_BC(object):
 		reweight_eval,
 		reweight_improve,
 		reweight_constraint,
+		clip_constraint,
 		discount=0.99,
 		tau=0.005,
 		policy_noise=0.2,
@@ -98,6 +99,7 @@ class TD3_BC(object):
 		self.reweight_eval = reweight_eval
 		self.reweight_improve = reweight_improve
 		self.reweight_constraint = reweight_constraint
+		self.clip_constraint = clip_constraint
 
 		self.total_it = 0
 
@@ -158,7 +160,14 @@ class TD3_BC(object):
 			# policy constraint
 			constraint_loss = F.mse_loss(pi, action, reduction='none') 
 			if self.reweight_constraint:
-				constraint_loss *= weight
+				if self.clip_constraint == 1:
+					c_weight = torch.clamp(weight, 1.0)
+				elif self.clip_constraint == 2:
+					c_weight = copy.deepcopy(weight)
+					c_weight[weight < 1] = torch.sqrt(weight[weight < 1])
+				else:
+					c_weight = weight
+				constraint_loss *= c_weight
 			constraint_loss = constraint_loss.mean()
 			actor_loss = -lmbda * actor_loss + constraint_loss
 			

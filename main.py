@@ -62,6 +62,7 @@ if __name__ == "__main__":
 	parser.add_argument("--reweight_eval", default=1, type=int)
 	parser.add_argument("--reweight_improve", default=1, type=int)
 	parser.add_argument("--reweight_constraint", default=1, type=int)
+	parser.add_argument("--clip_constraint", default=0, type=int)  # 0: no clip; 1: hard clip; 2 soft clip
 	parser.add_argument("--tag", default='', type=str)
 	args = parser.parse_args()
 
@@ -72,14 +73,6 @@ if __name__ == "__main__":
 	print("---------------------------------------")
 	print(f"Policy: {args.policy}, Env: {args.env}, Seed: {args.seed}")
 	print("---------------------------------------")
-
-	wandb.init(project="TD3_BC", config={
-			"env": args.env, "seed": args.seed, 
-			"resample": args.resample, "reweight": args.reweight, "p_base": args.base_prob,
-			"reweight_eval": args.reweight_eval, "reweight_improve": args.reweight_improve,
-			"reweight_constraint": args.reweight_constraint,
-			"tag": args.tag,
-			})
 
 	if not os.path.exists("./results"):
 		os.makedirs("./results")
@@ -115,7 +108,14 @@ if __name__ == "__main__":
 		"reweight_eval": args.reweight_eval, 
 		"reweight_improve": args.reweight_improve,
 		"reweight_constraint": args.reweight_constraint,
+		"clip_constraint": args.clip_constraint,
 	}
+
+	wandb.init(project="TD3_BC", config={
+			"env": args.env, "seed": args.seed, "tag": args.tag,
+			"resample": args.resample, "reweight": args.reweight, "p_base": args.base_prob,
+			**kwargs
+			})
 
 	# Initialize policy
 	policy = TD3_BC.TD3_BC(**kwargs)

@@ -99,7 +99,7 @@ class ReplayBuffer(object):
 		if self.reweight:
 			self.weights = self.probs * self.size
 		else:
-			self.weights = np.ones_like(dataset['rewards'])
+			self.weights = np.ones_like(self.probs)
 
 		if self.resample:
 			self.sampler = PrefetchBalancedSampler(self.probs, self.size, self.batch_size, n_prefetch=1000)

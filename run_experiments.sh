@@ -32,13 +32,12 @@ envs=(
 
 # python main.py --env halfcheetah-random-v2 --seed 0
 
-
 for ((i=0;i<5;i+=1))
 do 
 	for env in ${envs[*]}
 	do
 		PRIORITY=low NS=offrl make run cmd="python main.py --env $env --seed $i \
-					--resample --tag resample"
+			--reweight --reweight_eval=0 --reweight_improve=0  --reweight_constraint=1 --clip_constraint=1  --tag clip-v0"
 	    sleep 5;
 		
 	done
@@ -49,22 +48,12 @@ do
 	for env in ${envs[*]}
 	do
 		PRIORITY=low NS=offrl make run cmd="python main.py --env $env --seed $i \
-					--reweight --tag reweight"
+			--reweight --reweight_eval=0 --reweight_improve=0  --reweight_constraint=1 --clip_constraint=2  --tag clip-v0"
 	    sleep 5;
 		
 	done
 done
 
-for ((i=0;i<5;i+=1))
-do 
-	for env in ${envs[*]}
-	do
-		PRIORITY=low NS=offrl make run cmd="python main.py --env $env --seed $i \
-					--reweight --reweight_eval=false --reweight_improve=false  --tag reweight_constraint"
-	    sleep 5;
-		
-	done
-done
 
 
 # PRIORITY=low NS=offrl make run cmd="python main.py --env hopper-random-v2 --seed 0"
