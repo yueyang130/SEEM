@@ -8,7 +8,7 @@ echo $TEMPLATE_FILE
 # DOCKER_NAME=$1
 # DOCKER_TAG=$2
 # NameSpace
-NS="${NS:-offrl}"
+NS="${NS:-$USER}"
 
 # PROJECT=$DOCKER_NAME
 COMMAND="${*:1}"
