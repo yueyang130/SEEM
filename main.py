@@ -40,6 +40,7 @@ if __name__ == "__main__":
 	parser.add_argument("--policy", default="TD3_BC")               # Policy name
 	parser.add_argument("--env", default="hopper-medium-v0")        # OpenAI gym environment name
 	parser.add_argument("--seed", default=0, type=int)              # Sets Gym, PyTorch and Numpy seeds
+	parser.add_argument("--log_freq", default=1e3, type=int)       # How often (time steps) we evaluate
 	parser.add_argument("--eval_freq", default=5e3, type=int)       # How often (time steps) we evaluate
 	parser.add_argument("--max_timesteps", default=1e6, type=int)   # Max time steps to run environment
 	parser.add_argument("--save_model", action="store_true")        # Save model and optimizer parameters
@@ -136,7 +137,10 @@ if __name__ == "__main__":
 	# time0 = time.time()
 	evaluations = []
 	for t in range(int(args.max_timesteps)):
-		policy.train(replay_buffer)
+		infos = policy.train(replay_buffer)
+		if (t + 1) % args.log_freq == 0:
+			for k, v in infos.items():
+				wandb.log({f'train/{k}': v}, step=t+1)
 		# Evaluate episode
 		if (t + 1) % args.eval_freq == 0:
 			print(f"Time steps: {t+1}")

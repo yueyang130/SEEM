@@ -111,7 +111,6 @@ class TD3_BC(object):
 
 	def train(self, replay_buffer):
 		self.total_it += 1
-
 		# Sample replay buffer 
 		state, action, next_state, reward, not_done, weight = replay_buffer.sample()
 
@@ -145,6 +144,7 @@ class TD3_BC(object):
 		self.critic_optimizer.step()
 
 		# Delayed policy updates
+		actor_infos = {}
 		if self.total_it % self.policy_freq == 0:
 
 			# Compute actor loss
@@ -183,6 +183,19 @@ class TD3_BC(object):
 			for param, target_param in zip(self.actor.parameters(), self.actor_target.parameters()):
 				target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
+			# log actor training
+			actor_infos = {
+				"critic_loss": critic_loss.mean().cpu(),
+				"actor_loss": actor_loss.mean().cpu(),
+				"constraint_loss": constraint_loss.mean().cpu(),
+				"lambda": lmbda.cpu(), 
+			}
+
+		return {
+			"Q1": current_Q1.mean().cpu(),
+			"Q2": current_Q2.mean().cpu(),
+			**actor_infos,
+		}
 
 	def save(self, filename):
 		torch.save(self.critic.state_dict(), filename + "_critic")
