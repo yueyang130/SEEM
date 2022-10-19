@@ -1,13 +1,27 @@
-import numpy as np
+# Copyright 2022 Garena Online Private Limited.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Agent trajectory samplers."""
+
 import time
-import tqdm
+
+import numpy as np
 
 WIDTH = 250
 HEIGHT = 200
 
 
 class StepSampler(object):
-
   def __init__(self, env, max_traj_length=1000):
     self.max_traj_length = max_traj_length
     self._env = env
@@ -59,19 +73,24 @@ class StepSampler(object):
 
 
 class TrajSampler(object):
-
   def __init__(self, env, max_traj_length=1000, render=False):
     self.max_traj_length = max_traj_length
     self._env = env
     self._render = render
-  
+
   def norm_obs(self, obs, obs_statistics):
     obs_mean, obs_std, obs_clip = obs_statistics
-    return np.clip(
-      (obs - obs_mean) / (obs_std + 1e-6), -obs_clip, obs_clip
-    )
+    return np.clip((obs - obs_mean) / (obs_std + 1e-6), -obs_clip, obs_clip)
 
-  def sample(self, policy, n_trajs, deterministic=False, replay_buffer=None, obs_statistics=(0, 1, np.inf), env_render_fn='render'):
+  def sample(
+    self,
+    policy,
+    n_trajs,
+    deterministic=False,
+    replay_buffer=None,
+    obs_statistics=(0, 1, np.inf),
+    env_render_fn="render",
+  ):
     trajs = []
     for _ in range(n_trajs):
       observations = []
@@ -83,7 +102,8 @@ class TrajSampler(object):
       observation = self.env.reset()
       observation = self.norm_obs(observation, obs_statistics)
 
-      for _ in tqdm.tqdm(range(self.max_traj_length), disable=not self._render):
+      done = False
+      while not done:
         action = policy(
           observation.reshape(1, -1), deterministic=deterministic
         ).reshape(-1)
@@ -106,9 +126,6 @@ class TrajSampler(object):
 
         observation = next_observation
 
-        if done:
-          break
-      
       trajs.append(
         dict(
           observations=np.array(observations, dtype=np.float32),

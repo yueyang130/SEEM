@@ -1,7 +1,7 @@
 SHELL=/bin/bash
 PROJECT_NAME=algos
 PROJECT_PATH=${PROJECT_NAME}/
-LINT_PATHS=${PROJECT_PATH} experiments/ utilities/
+LINT_PATHS=${PROJECT_PATH} experiments/ utilities/ algos/
 
 check_install = python3 -c "import $(1)" || pip3 install $(1) --upgrade
 check_install_extra = python3 -c "import $(1)" || pip3 install $(2) --upgrade
@@ -13,7 +13,7 @@ pytest:
 
 mypy:
 	$(call check_install, mypy)
-	mypy ${PROJECT_PATH} ff_scenarios
+	mypy ${PROJECT_PATH}
 
 lint:
 	$(call check_install, flake8)
@@ -51,7 +51,7 @@ spelling:
 clean:
 	make clean
 
-commit-checks: format lint mypy check-docstyle
+commit-checks: format lint check-docstyle
 
 # Build docker images
 docker:

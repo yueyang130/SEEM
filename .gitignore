@@ -145,10 +145,11 @@ sota
 data/dm_control*
 data/dm_locomotion*
 ~/
-scripts/launch_job.sh
 *npy
 vis_results
 logs/
 temp/
 *pkl
 *pdf
+
+.trunk/

@@ -1,4 +1,17 @@
-"""To be cleaned later."""
+# Copyright 2022 Garena Online Private Limited.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+"""Utils to generate trajectory based dataset with multi-step reward."""
 
 import collections
 
@@ -8,8 +21,7 @@ import numpy as np
 from tqdm import tqdm
 
 Batch = collections.namedtuple(
-  "Batch",
-  ["observations", "actions", "rewards", "masks", "next_observations"]
+  "Batch", ["observations", "actions", "rewards", "masks", "next_observations"]
 )
 
 
@@ -36,7 +48,6 @@ def split_into_trajectories(
 
 
 class Dataset(object):
-
   def __init__(
     self,
     observations: np.ndarray,
@@ -68,10 +79,7 @@ class Dataset(object):
 
 
 class D4RLDataset(Dataset):
-
-  def __init__(
-    self, env: gym.Env, clip_to_eps: bool = True, eps: float = 1e-5
-  ):
+  def __init__(self, env: gym.Env, clip_to_eps: bool = True, eps: float = 1e-5):
     self.raw_dataset = dataset = d4rl.qlearning_dataset(env)
 
     if clip_to_eps:
@@ -82,9 +90,11 @@ class D4RLDataset(Dataset):
 
     for i in range(len(dones_float) - 1):
       if (
-        np.linalg.
-        norm(dataset["observations"][i + 1] - dataset["next_observations"][i])
-        > 1e-6 or dataset["terminals"][i] == 1.0
+        np.linalg.norm(
+          dataset["observations"][i + 1] - dataset["next_observations"][i]
+        )
+        > 1e-6
+        or dataset["terminals"][i] == 1.0
       ):
         dones_float[i] = 1
       else:
@@ -110,12 +120,17 @@ def compute_returns(traj):
 
   return episode_return
 
+
 def get_traj_dataset(env, sorting=True):
   env = gym.make(env) if isinstance(env, str) else env
   dataset = D4RLDataset(env)
   trajs = split_into_trajectories(
-    dataset.observations, dataset.actions, dataset.rewards, dataset.masks,
-    dataset.dones_float, dataset.next_observations
+    dataset.observations,
+    dataset.actions,
+    dataset.rewards,
+    dataset.masks,
+    dataset.dones_float,
+    dataset.next_observations,
   )
   if sorting:
     trajs.sort(key=compute_returns)
@@ -126,7 +141,7 @@ def get_traj_dataset(env, sorting=True):
 
 def nstep_reward_prefix(rewards, nstep=5, gamma=0.9):
   gammas = np.array([gamma**i for i in range(nstep)])
-  nstep_rewards = np.convolve(rewards, gammas)[nstep - 1:]
+  nstep_rewards = np.convolve(rewards, gammas)[nstep - 1 :]
   return nstep_rewards
 
 
@@ -138,7 +153,7 @@ def get_nstep_dataset(env, nstep=5, gamma=0.9, sorting=True):
   for traj in trajs:
     L = len(traj)
     rewards = np.array([ts[2] for ts in traj])
-    cum_rewards = np.convolve(rewards, gammas)[nstep - 1:]
+    cum_rewards = np.convolve(rewards, gammas)[nstep - 1 :]
     nstep_rews.append(cum_rewards)
     next_obss.extend([traj[min(i + nstep - 1, L - 1)][-1] for i in range(L)])
     obss.extend([traj[i][0] for i in range(L)])
@@ -146,23 +161,14 @@ def get_nstep_dataset(env, nstep=5, gamma=0.9, sorting=True):
     terms.extend([bool(1 - traj[i][3]) for i in range(L)])
 
   dataset = {}
-  dataset['observations'] = np.stack(obss)
-  dataset['actions'] = np.stack(acts)
-  dataset['next_observations'] = np.stack(next_obss)
-  dataset['rewards'] = np.concatenate(nstep_rews)
-  dataset['terminals'] = np.stack(terms)
+  dataset["observations"] = np.stack(obss)
+  dataset["actions"] = np.stack(acts)
+  dataset["next_observations"] = np.stack(next_obss)
+  dataset["rewards"] = np.concatenate(nstep_rews)
+  dataset["terminals"] = np.stack(terms)
+  raw_shape = raw_dataset["next_observations"].shape
 
-  assert len(dataset['rewards']) == len(raw_dataset['rewards'])
-  assert dataset['next_observations'].shape == raw_dataset['next_observations'
-                                                          ].shape
+  assert len(dataset["rewards"]) == len(raw_dataset["rewards"])
+  assert dataset["next_observations"].shape == raw_shape
 
   return dataset
-
-
-if __name__ == '__main__':
-  env_name = 'halfcheetah-medium-v0'
-  # trajs = get_traj_dataset(env_name)
-  dataset = get_nstep_dataset(env_name)
-  import pdb
-  pdb.set_trace()
-  print('hello world')
