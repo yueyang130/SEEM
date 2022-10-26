@@ -15,6 +15,9 @@
 
 __version__ = "0.0.1"
 
+from algos.cql import CQL
+from algos.crr import CRR
+from algos.iql import IQL
 from algos.misa import MISA
 
-__all__ = ["MISA"]
+__all__ = ["MISA", "CRR", "IQL", "CQL"]

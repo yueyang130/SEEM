@@ -21,7 +21,8 @@ import numpy as np
 from tqdm import tqdm
 
 Batch = collections.namedtuple(
-  "Batch", ["observations", "actions", "rewards", "masks", "next_observations"]
+  "Batch",
+  ["observations", "actions", "rewards", "masks", "next_observations"]
 )
 
 
@@ -48,6 +49,7 @@ def split_into_trajectories(
 
 
 class Dataset(object):
+
   def __init__(
     self,
     observations: np.ndarray,
@@ -79,7 +81,10 @@ class Dataset(object):
 
 
 class D4RLDataset(Dataset):
-  def __init__(self, env: gym.Env, clip_to_eps: bool = True, eps: float = 1e-5):
+
+  def __init__(
+    self, env: gym.Env, clip_to_eps: bool = True, eps: float = 1e-5
+  ):
     self.raw_dataset = dataset = d4rl.qlearning_dataset(env)
 
     if clip_to_eps:
@@ -90,11 +95,9 @@ class D4RLDataset(Dataset):
 
     for i in range(len(dones_float) - 1):
       if (
-        np.linalg.norm(
-          dataset["observations"][i + 1] - dataset["next_observations"][i]
-        )
-        > 1e-6
-        or dataset["terminals"][i] == 1.0
+        np.linalg.
+        norm(dataset["observations"][i + 1] - dataset["next_observations"][i])
+        > 1e-6 or dataset["terminals"][i] == 1.0
       ):
         dones_float[i] = 1
       else:
@@ -141,7 +144,7 @@ def get_traj_dataset(env, sorting=True):
 
 def nstep_reward_prefix(rewards, nstep=5, gamma=0.9):
   gammas = np.array([gamma**i for i in range(nstep)])
-  nstep_rewards = np.convolve(rewards, gammas)[nstep - 1 :]
+  nstep_rewards = np.convolve(rewards, gammas)[nstep - 1:]
   return nstep_rewards
 
 
@@ -153,7 +156,7 @@ def get_nstep_dataset(env, nstep=5, gamma=0.9, sorting=True):
   for traj in trajs:
     L = len(traj)
     rewards = np.array([ts[2] for ts in traj])
-    cum_rewards = np.convolve(rewards, gammas)[nstep - 1 :]
+    cum_rewards = np.convolve(rewards, gammas)[nstep - 1:]
     nstep_rews.append(cum_rewards)
     next_obss.extend([traj[min(i + nstep - 1, L - 1)][-1] for i in range(L)])
     obss.extend([traj[i][0] for i in range(L)])

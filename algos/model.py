@@ -21,6 +21,7 @@ import distrax
 import jax
 import jax.numpy as jnp
 from flax import linen as nn
+
 from utilities.jax_utils import extend_and_repeat, next_rng
 
 LOG_SIG_MAX = 2
@@ -36,6 +37,7 @@ def update_target_network(main_params, target_params, tau):
 
 
 def multiple_action_q_function(forward):
+
   def wrapped(self, observations, actions, **kwargs):
     multiple_actions = False
     batch_size = observations.shape[0]
@@ -79,7 +81,9 @@ class FullyConnectedNetwork(nn.Module):
           h,
           kernel_init=jax.nn.initializers.orthogonal(jnp.sqrt(2.0)),
           bias_init=jax.nn.initializers.zeros,
-        )(x)
+        )(
+          x
+        )
       else:
         x = nn.Dense(h)(x)
       if self.use_layer_norm:
@@ -91,7 +95,9 @@ class FullyConnectedNetwork(nn.Module):
         self.output_dim,
         kernel_init=jax.nn.initializers.orthogonal(1e-2),
         bias_init=jax.nn.initializers.zeros,
-      )(x)
+      )(
+        x
+      )
     else:
       output = nn.Dense(
         self.output_dim,
@@ -99,7 +105,9 @@ class FullyConnectedNetwork(nn.Module):
           1e-2, "fan_in", "uniform"
         ),
         bias_init=jax.nn.initializers.zeros,
-      )(x)
+      )(
+        x
+      )
 
     if self.use_layer_norm:
       x = nn.LayerNorm()(x)
@@ -125,7 +133,35 @@ class FullyConnectedQFunction(nn.Module):
       orthogonal_init=self.orthogonal_init,
       use_layer_norm=self.use_layer_norm,
       activation=self.activation,
-    )(x)
+    )(
+      x
+    )
+    return jnp.squeeze(x, -1)
+
+  @property
+  def input_size(self):
+    return self.observation_dim
+
+
+class FullyConnectedVFunction(nn.Module):
+  observation_dim: int
+  arch: str = '256-256'
+  orthogonal_init: bool = False
+  use_layer_norm: bool = False
+  activation: str = 'relu'
+
+  @nn.compact
+  def __call__(self, observations):
+    x = FullyConnectedNetwork(
+      output_dim=1,
+      arch=self.arch,
+      orthogonal_init=self.orthogonal_init,
+      use_layer_norm=self.use_layer_norm,
+      activation=self.activation
+    )(
+      observations
+    )
+
     return jnp.squeeze(x, -1)
 
   @property
@@ -204,6 +240,7 @@ class TanhGaussianPolicy(nn.Module):
 
 
 class SamplerPolicy(object):
+
   def __init__(self, policy, policy_params, mean=0, std=1):
     self.policy = policy
     self.policy_params = policy_params
@@ -216,7 +253,9 @@ class SamplerPolicy(object):
 
   @partial(jax.jit, static_argnames=("self", "deterministic"))
   def act(self, params, rng, observations, deterministic):
-    return self.policy.apply(params, rng, observations, deterministic, repeat=None)
+    return self.policy.apply(
+      params, rng, observations, deterministic, repeat=None
+    )
 
   def __call__(self, observations, deterministic=False):
     observations = (observations - self.mean) / self.std

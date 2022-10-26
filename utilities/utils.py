@@ -39,10 +39,13 @@ def norm_obs(ds, mean, std, clip_val):
   ds["next_observations"] = (ds["next_observations"] - mean) / (std + 1e-6)
 
   ds["observations"] = np.clip(ds["observations"], -clip_val, clip_val)
-  ds["next_observations"] = np.clip(ds["next_observations"], -clip_val, clip_val)
+  ds["next_observations"] = np.clip(
+    ds["next_observations"], -clip_val, clip_val
+  )
 
 
 class Timer(object):
+
   def __init__(self):
     self._time = None
 
@@ -58,6 +61,7 @@ class Timer(object):
 
 
 class WandBLogger(object):
+
   @staticmethod
   def get_default_config(updates=None):
     config = ConfigDict()

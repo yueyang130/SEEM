@@ -14,7 +14,7 @@
 
 """dataset and sampler."""
 
+from data.dataset import Dataset, DM2Gym, RLUPDataset
 from data.sampler import RandSampler
-from data.dataset import Dataset
 
-__all__ = ["RandSampler", "Dataset"]
+__all__ = ["Dataset", "DM2Gym", "RLUPDataset", "RandSampler"]

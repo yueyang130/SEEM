@@ -32,6 +32,7 @@ from utilities.utils import prefix_metrics
 
 
 class MISA(object):
+
   @staticmethod
   def get_default_config(updates=None):
     config = ConfigDict()
@@ -148,6 +149,7 @@ class MISA(object):
 
   @partial(jax.jit, static_argnames=("self", "bc"))
   def _train_step(self, train_states, target_qf_params, rng, batch, bc=False):
+
     def loss_fn(train_params, rng):
       observations = batch["observations"]
       actions = batch["actions"]
@@ -165,21 +167,19 @@ class MISA(object):
       if self.config.use_automatic_entropy_tuning:
         if self.config.detach_pi:
           alpha_loss = (
-            -self.log_alpha.apply(train_params["log_alpha"])
-            * (
-              jax.lax.stop_gradient(log_pi) + self.config.target_entropy
-            ).mean()
+            -self.log_alpha.apply(train_params["log_alpha"]) *
+            (jax.lax.stop_gradient(log_pi) + self.config.target_entropy).mean()
           )
         else:
           alpha_loss = (
-            -self.log_alpha.apply(train_params["log_alpha"])
-            * (log_pi + self.config.target_entropy).mean()
+            -self.log_alpha.apply(train_params["log_alpha"]) *
+            (log_pi + self.config.target_entropy).mean()
           )
 
         loss_collection["log_alpha"] = alpha_loss
         alpha = (
-          jnp.exp(self.log_alpha.apply(train_params["log_alpha"]))
-          * self.config.alpha_multiplier
+          jnp.exp(self.log_alpha.apply(train_params["log_alpha"])) *
+          self.config.alpha_multiplier
         )
       else:
         alpha_loss = 0.0
@@ -384,12 +384,12 @@ class MISA(object):
         std_q2 = jnp.std(cat_q2, axis=1)
 
         qf1_ood = (
-          jax.scipy.special.logsumexp(cat_q1 / self.config.temp, axis=1)
-          * self.config.temp
+          jax.scipy.special.logsumexp(cat_q1 / self.config.temp, axis=1) *
+          self.config.temp
         )
         qf2_ood = (
-          jax.scipy.special.logsumexp(cat_q2 / self.config.temp, axis=1)
-          * self.config.temp
+          jax.scipy.special.logsumexp(cat_q2 / self.config.temp, axis=1) *
+          self.config.temp
         )
         """Subtract the log likelihood of data"""
         qf1_diff = jnp.clip(
@@ -412,14 +412,12 @@ class MISA(object):
             a_max=1000000.0,
           )
           min_qf1_loss = (
-            alpha_prime
-            * self.config.min_q_weight
-            * (qf1_diff - self.config.target_action_gap)
+            alpha_prime * self.config.min_q_weight *
+            (qf1_diff - self.config.target_action_gap)
           )
           min_qf2_loss = (
-            alpha_prime
-            * self.config.min_q_weight
-            * (qf2_diff - self.config.target_action_gap)
+            alpha_prime * self.config.min_q_weight *
+            (qf2_diff - self.config.target_action_gap)
           )
 
           alpha_prime_loss = (-min_qf1_loss - min_qf2_loss) * 0.5

@@ -22,6 +22,7 @@ HEIGHT = 200
 
 
 class StepSampler(object):
+
   def __init__(self, env, max_traj_length=1000):
     self.max_traj_length = max_traj_length
     self._env = env
@@ -73,6 +74,7 @@ class StepSampler(object):
 
 
 class TrajSampler(object):
+
   def __init__(self, env, max_traj_length=1000, render=False):
     self.max_traj_length = max_traj_length
     self._env = env

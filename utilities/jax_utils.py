@@ -18,6 +18,7 @@ import jax.numpy as jnp
 
 
 class JaxRNG(object):
+
   def __init__(self, seed):
     self.rng = jax.random.PRNGKey(seed)
 
@@ -45,7 +46,9 @@ def mse_loss(val, target):
 
 
 def value_and_multi_grad(fun, n_outputs, argnums=0, has_aux=False):
+
   def select_output(index):
+
     def wrapped(*args, **kwargs):
       if has_aux:
         x, *aux = fun(*args, **kwargs)

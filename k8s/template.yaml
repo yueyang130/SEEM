@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  generateName: "misa-%{USER}-job-"
+  generateName: "%{ALGO}-%{USER}-job-"
   labels:
     estimated-running-time: "2h"
 spec:

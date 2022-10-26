@@ -1,12 +1,18 @@
+from ml_collections import ConfigDict
 
-from algos.misa import MISA
+import algos
 from utilities.utils import WandBLogger, define_flags_with_default
+
+algo_cfg_default_collection = ConfigDict()
+for alg in algos.__all__:
+  algo_cfg_default_collection.update(getattr(algos, alg).get_default_config())
 
 FLAGS_DEF = define_flags_with_default(
   algo="MISA",
   type="model-free",
-  env="walker2d-medium-v2",
-  dataset='d4rl',
+  env="walker_walk",
+  dataset='rl_unplugged',
+  rl_unplugged_task_class='control_suite',
   max_traj_length=1000,
   save_model=False,
   seed=42,
@@ -20,7 +26,7 @@ FLAGS_DEF = define_flags_with_default(
   orthogonal_init=False,
   policy_log_std_multiplier=1.0,
   policy_log_std_offset=-1.0,
-  algo_cfg=MISA.get_default_config(),
+  algo_cfg=algo_cfg_default_collection,
   n_epochs=1200,
   bc_epochs=0,
   n_train_step_per_epoch=1000,
