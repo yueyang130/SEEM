@@ -273,7 +273,7 @@ class MFTrainer:
     return dataset, eval_sampler
 
   def __setup_policy(self):
-    if self._algo_type == ALGO.MISA or self._algo_type == ALGO.CRR or self._algo_type == ALGO.IQL or self._algo_type == ALGO.ConservativeSAC:
+    if self._algo_type == ALGO.MISA or self._algo_type == ALGO.CRR or self._algo_type == ALGO.IQL or self._algo_type == ALGO.CQL:
       policy = TanhGaussianPolicy(
         self._observation_dim,
         self._action_dim,
@@ -289,7 +289,7 @@ class MFTrainer:
     return policy
 
   def __setup_qf(self):
-    if self._algo_type == ALGO.MISA or self._algo_type == ALGO.CRR or self._algo_type == ALGO.IQL or self._algo_type == ALGO.ConservativeSAC:
+    if self._algo_type == ALGO.MISA or self._algo_type == ALGO.CRR or self._algo_type == ALGO.IQL or self._algo_type == ALGO.CQL:
       qf = FullyConnectedQFunction(
         self._observation_dim,
         self._action_dim,

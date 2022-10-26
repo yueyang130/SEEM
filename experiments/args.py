@@ -10,8 +10,8 @@ for alg in algos.__all__:
 FLAGS_DEF = define_flags_with_default(
   algo="MISA",
   type="model-free",
-  env="walker_walk",
-  dataset='rl_unplugged',
+  env="walker2d-medium-v2",
+  dataset='d4rl',
   rl_unplugged_task_class='control_suite',
   max_traj_length=1000,
   save_model=False,
