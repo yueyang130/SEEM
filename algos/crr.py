@@ -1,14 +1,14 @@
 from copy import deepcopy
 from functools import partial
-from logging import logProcesses
 
 import jax
 import jax.numpy as jnp
+import numpy as np
 import optax
 from flax.training.train_state import TrainState
 from ml_collections import ConfigDict
 
-from algos.model import Scalar, update_target_network
+from algos.model import update_target_network
 from utilities.jax_utils import mse_loss, next_rng, value_and_multi_grad
 
 
@@ -25,11 +25,17 @@ class CRR(object):
     config.qf_lr = 3e-4
     config.optimizer_type = 'adam'
     config.soft_target_update_rate = 5e-3
-    config.sample_actions = 4
-    config.crr_fn = 'exp'  # exp or indicator
+    config.sample_actions = 50
+    config.crr_fn = 'exp' # exp or indicator
     config.crr_beta = 1.0
     config.crr_ratio_upper_bound = 20.0
     config.nstep = 1
+    config.double_q = True
+    config.avg_fn = 'mean' # or max
+    config.merge_all = True
+    config.q_weight_method = 'min'
+    config.use_expectile = True
+    config.exp_tau = 0.7
 
     if updates is not None:
       config.update(ConfigDict(updates).copy_and_resolve_references())
@@ -40,7 +46,7 @@ class CRR(object):
     self.decoupled_q = decoupled_q
     self.policy = policy
     self.qf = qf
-    self.observation_dim = policy.observation_dim
+    self.observations_dim = policy.input_size
     self.action_dim = policy.action_dim
 
     self._train_states = {}
@@ -51,7 +57,7 @@ class CRR(object):
     }[self.config.optimizer_type]
 
     policy_params = self.policy.init(
-      next_rng(), next_rng(), jnp.zeros((10, self.observation_dim))
+      next_rng(), next_rng(), jnp.zeros((10, self.observations_dim))
     )
     self._train_states['policy'] = TrainState.create(
       params=policy_params,
@@ -60,7 +66,7 @@ class CRR(object):
     )
 
     qf_params = self.qf.init(
-      next_rng(), jnp.zeros((10, self.observation_dim)),
+      next_rng(), jnp.zeros((10, self.observations_dim)),
       jnp.zeros((10, self.action_dim))
     )
     self._train_states['qf'] = TrainState.create(
@@ -68,22 +74,35 @@ class CRR(object):
       tx=optimizer_class(self.config.qf_lr),
       apply_fn=None,
     )
-    self._target_qf_params = deepcopy({'qf': qf_params})
-
+    target_dict = {'qf': qf_params}
     model_keys = ['policy', 'qf']
+
+    if self.config.double_q:
+      qf2_params = self.qf.init(
+        next_rng(), jnp.zeros((10, self.observations_dim)),
+        jnp.zeros((10, self.action_dim))
+      )
+      self._train_states['qf2'] = TrainState.create(
+        params=qf2_params, tx=optimizer_class(self.config.qf_lr), apply_fn=None
+      )
+      target_dict['qf2'] = qf2_params
+      model_keys.append('qf2')
+
+    target_dict['policy'] = policy_params
+    self._target_params = deepcopy(target_dict)
 
     self._model_keys = tuple(model_keys)
     self._total_steps = 0
 
   def train(self, batch, bc=False):
     self._total_steps += 1
-    self._train_states, self._target_qf_params, metrics = self._train_step(
-      self._train_states, self._target_qf_params, next_rng(), batch
+    self._train_states, self._target_params, metrics = self._train_step(
+      self._train_states, self._target_params, next_rng(), batch
     )
     return metrics
-
+  
   @partial(jax.jit, static_argnames='self')
-  def _train_step(self, train_states, target_qf_params, rng, batch):
+  def _train_step(self, train_states, target_params, rng, batch):
 
     def loss_fn(train_params, rng):
       observations = batch['observations']
@@ -93,28 +112,62 @@ class CRR(object):
       dones = batch['dones']
 
       loss_collection = {}
-
+ 
       rng, split_rng = jax.random.split(rng)
       _, log_pi = self.policy.apply(
-        train_params['policy'], split_rng, observations
-      )
+        train_params['policy'], split_rng, observations 
+     )
+
       """ Q function loss """
       q1_pred = self.qf.apply(train_params['qf'], observations, actions)
+      if self.config.double_q:
+        q2_pred = self.qf.apply(train_params['qf2'], observations, actions)
 
       rng, split_rng = jax.random.split(rng)
       new_next_actions, next_log_pi = self.policy.apply(
-        train_params['policy'], split_rng, next_observations
+        target_params['policy'], split_rng, next_observations 
       )
       target_q_values = self.qf.apply(
-        target_qf_params['qf'], next_observations, new_next_actions
+        target_params['qf'], next_observations, new_next_actions
       )
+      if self.config.double_q:
+        target_q_values = jnp.minimum(
+          target_q_values,
+          self.qf.apply(target_params['qf2'], next_observations,
+            new_next_actions)
+        )
 
       q_target = jax.lax.stop_gradient(
         rewards + (1. - dones) * self.config.discount * target_q_values
       )
       qf_loss = mse_loss(q1_pred, q_target)
 
-      loss_collection['qf'] = qf_loss
+      loss_collection['qf'] = qf_loss * 0.5
+
+      if self.config.double_q:
+        qf2_loss = mse_loss(q2_pred, q_target)
+        loss_collection['qf2'] = qf2_loss * 0.5
+      
+      if self.config.use_expectile:
+        diff1 = q1_pred - q_target
+        exp_w1 = jnp.where(
+          diff1 > 0,
+          self.config.exp_tau,
+          1 - self.config.exp_tau
+        )
+        loss_collection['qf'] = (exp_w1 * (diff1 ** 2)).mean()
+
+        if self.config.double_q:
+          diff2 = q2_pred - q_target
+          exp_w2 = jnp.where(
+            diff2 > 0,
+            self.config.exp_tau,
+            1 - self.config.exp_tau
+          )
+
+          loss_collection['qf2'] = (
+            exp_w2 * (diff2 ** 2)
+          ).mean()
 
       rng, split_rng = jax.random.split(rng)
       replicated_obs = jnp.broadcast_to(
@@ -123,20 +176,29 @@ class CRR(object):
       vf_actions, _ = self.policy.apply(
         train_params['policy'], split_rng, replicated_obs
       )
-      v = jnp.mean(
-        self.qf.apply(train_params['qf'], replicated_obs, vf_actions)
-      )
 
-      adv = q1_pred - v
+      v = self.qf.apply(train_params['qf'], replicated_obs, vf_actions)
+      q_pred = q1_pred
+      if self.config.double_q:
+        v2 = self.qf.apply(train_params['qf2'], replicated_obs, vf_actions)
+        if self.config.q_weight_method == 'min':
+          v = jnp.minimum(v, v2)
+        elif self.config.q_weight_method == 'avg':
+          v = (v + v2) / 2
+        else:
+          raise NotImplementedError
+        q_pred = jnp.minimum(q1_pred, q2_pred)
+
+      if self.config.merge_all:
+        adv = q_pred - getattr(jnp, self.config.avg_fn)(v)
+      else:
+        adv = q_pred - getattr(jnp, self.config.avg_fn)(v, axis=0)
 
       if self.config.crr_fn == 'exp':
-        coef = jnp.minimum(
-          self.config.crr_ratio_upper_bound,
-          jnp.exp(adv / self.config.crr_beta)
-        )
+        coef = jnp.minimum(self.config.crr_ratio_upper_bound, jnp.exp(adv / self.config.crr_beta))
       else:
         coef = jnp.heaviside(adv, 0)
-
+      
       coef = jax.lax.stop_gradient(coef)
       log_prob = self.policy.apply(
         train_params['policy'],
@@ -158,11 +220,10 @@ class CRR(object):
       key: train_states[key].apply_gradients(grads=grads[i][key])
       for i, key in enumerate(self.model_keys)
     }
-    new_target_qf_params = {}
-    new_target_qf_params['qf'] = update_target_network(
-      new_train_states['qf'].params, target_qf_params['qf'],
-      self.config.soft_target_update_rate
-    )
+    new_target_params = {}
+    for k in target_params.keys():
+      new_target_params[k] = update_target_network(new_train_states[k].params,
+          target_params[k], self.config.soft_target_update_rate)
 
     metrics = dict(
       log_pi=aux_values['log_pi'].mean(),
@@ -170,8 +231,19 @@ class CRR(object):
       qf_loss=aux_values['qf_loss'],
       average_qf=aux_values['q1_pred'].mean(),
       average_target_q=aux_values['target_q_values'].mean(),
+      adv=aux_values['adv'].mean(),
+      coef=aux_values['coef'].mean(),
+      v=aux_values['v'].mean()
     )
-    return new_train_states, new_target_qf_params, metrics
+
+    if self.config.double_q:
+      q2_dict = dict(
+        q2_pred=aux_values['q2_pred'].mean(),
+        qf2_loss=aux_values['qf2_loss']
+        )
+      metrics.update(q2_dict)
+
+    return new_train_states, new_target_params, metrics
 
   @property
   def model_keys(self):
