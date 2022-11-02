@@ -28,7 +28,10 @@ if [$ESCAPED_COMMAND = '']; then
   ESCAPED_COMMAND="sleep 86400"
 fi
 echo $ESCAPED_COMMAND
+uname=$(whoami)
+PROJECT_PATH=$(echo $PWD | sed "s/home\/aiops\/${uname}/workspace/g")
 
+ALGO=${ALGO:-MISA}
 ALGO_LOWERCASE=${ALGO,,}
 
 rm "$TEMPORARY_JOB_FILE"
@@ -45,8 +48,10 @@ sed -i "s/%{PRIORITY}/$PRIORITY/g" "$TEMPORARY_JOB_FILE"
 sed -i "s/%{WB_KEY}/$WANDB_API_KEY/g" "$TEMPORARY_JOB_FILE"
 sed -i "s/%{SOTA_KEY}/$SOTA_API_KEY/g" "$TEMPORARY_JOB_FILE"
 sed -i "s/%{ALGO}/$ALGO_LOWERCASE/g" "$TEMPORARY_JOB_FILE"
+sed -i "s/%{PROJECT_PATH}/${PROJECT_PATH//\//\\/}/g" "$TEMPORARY_JOB_FILE"
 
 # cat "$TEMPORARY_JOB_FILE"
 echo "$NS: $PRIORITY"
+echo $TEMPORARY_JOB_FILE
 
 kubectl create --namespace $NS -f "$TEMPORARY_JOB_FILE"

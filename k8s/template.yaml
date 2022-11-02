@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  generateName: "%{ALGO}-%{USER}-job-"
+  generateName: "offbench-%{ALGO}-%{USER}-job-"
   labels:
     estimated-running-time: "2h"
 spec:
@@ -39,7 +39,7 @@ spec:
           mountPath: /dev/shm
         command: ["/bin/bash"]
         args: [
-          "-c", "pip install sota; cd /workspace/offrl; %{COMMAND}"
+          "-c", "pip install sota; cd %{PROJECT_PATH}; %{COMMAND}"
         ]
         # command: ["/bin/sh", "-c", "sleep 86400"]
         env:
