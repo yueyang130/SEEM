@@ -4,6 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from TD3_BC import Critic
+import math
+from torch.optim import lr_scheduler
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -20,7 +22,6 @@ class ValueNet(nn.Module):
 		v1 = F.relu(self.l2(v1))
 		v1 = self.l3(v1)
 		return v1
-
 
 
 class Advantage(nn.Module):
@@ -64,6 +65,8 @@ class V_Advantage(Advantage):
 		state_dim,
 		action_dim,
 		td_type,
+		bc_lr_schedule,
+		maxstep,
 		discount=0.99,
 		tau=0.005,
 	):
@@ -71,6 +74,8 @@ class V_Advantage(Advantage):
 		self.value = ValueNet(state_dim).to(device)
 		self.value_target = copy.deepcopy(self.value)
 		self.value_optimizer = torch.optim.Adam(self.value.parameters(), lr=3e-4)
+		self.value_lr_scheduler = get_scheduler(self.value_optimizer, bc_lr_schedule, maxstep)
+		
 		self.discount = discount
 		self.tau = tau
 		self.total_it = 0
@@ -95,10 +100,13 @@ class V_Advantage(Advantage):
 
 		# Update the frozen target models
 		self.update_target()
+		self.value_lr_scheduler.step()
+
 
 		return {
 			"value_loss": value_loss.mean().cpu(),
 			"v": v.mean().cpu(),
+			"value_lr": self.value_optimizer.param_groups[0]['lr'],
 		}
 	
 	def update_target(self):
@@ -124,6 +132,8 @@ class VQ_Advantage(Advantage):
 		state_dim,
 		action_dim,
 		td_type,
+		bc_lr_schedule,
+		maxstep,
 		discount=0.99,
 		tau=0.005,
 	):
@@ -131,10 +141,12 @@ class VQ_Advantage(Advantage):
 		self.value = ValueNet(state_dim).to(device)
 		self.value_target = copy.deepcopy(self.value)
 		self.value_optimizer = torch.optim.Adam(self.value.parameters(), lr=3e-4)
+		self.value_lr_scheduler = get_scheduler(self.value_optimizer, bc_lr_schedule, maxstep)
 		
 		self.critic = Critic(state_dim, action_dim).to(device)
 		self.critic_target = copy.deepcopy(self.critic)
 		self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=3e-4)
+		self.critic_lr_scheduler = get_scheduler(self.critic_optimizer, bc_lr_schedule, maxstep)
 
 		self.discount = discount
 		self.tau = tau
@@ -170,13 +182,16 @@ class VQ_Advantage(Advantage):
 
 		# Update the frozen target models
 		self.update_target()
+		self.critic_lr_scheduler.step()
+		self.value_lr_scheduler.step()
 
 		return {
 			"critic_loss": critic_loss.mean().cpu(),
 			"value_loss": value_loss.mean().cpu(),
 			"v": v.mean().cpu(),
 			"q": q.mean().cpu(),
-
+			"critic_lr": self.critic_optimizer.param_groups[0]['lr'],
+			"value_lr": self.value_optimizer.param_groups[0]['lr'],
 		}
 	
 	def update_target(self):
@@ -199,3 +214,35 @@ class VQ_Advantage(Advantage):
 		self.value.load_state_dict(torch.load(filename + "_critic"))
 		self.value_optimizer.load_state_dict(torch.load(filename + "_critic_optimizer"))
 		self.value_target = copy.deepcopy(self.value)
+
+
+def get_scheduler(optimizer, adjust_lr, epochs, warmup_epoch=0) :
+	"""Return a learning rate scheduler
+		Parameters:
+		optimizer -- 网络优化器
+		opt.lr_policy -- 学习率scheduler的名称: linear | step | plateau | cosine
+	"""
+	def warmup_rule(epoch) :
+		if epoch < warmup_epoch :
+			lr_l = epoch / warmup_epoch
+		else:
+			T = epoch - warmup_epoch
+			total_epoch = epochs - warmup_epoch
+
+			if adjust_lr == 'cosine':
+				lr_l = 0.5 * (1 + math.cos(T / total_epoch * math.pi))
+			# elif adjust_lr == 'step':
+			# 	gamma = opt.step_gamma
+			# 	step_size = opt.step_size
+			# 	lr_l = gamma ** (T//step_size)
+			elif adjust_lr == 'linear':
+				lr_l = 1.0 - T / total_epoch
+			elif adjust_lr == 'none':
+				lr_l = 1.0
+			else:
+				raise NotImplementedError('learning rate policy [%s] is not implemented', adjust_lr)
+		return lr_l
+
+	scheduler = lr_scheduler.LambdaLR(optimizer, lr_lambda=warmup_rule)
+
+	return scheduler

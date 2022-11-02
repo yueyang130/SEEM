@@ -2,7 +2,7 @@
 
 # Script to reproduce results
 ns=offbench
-prio=high
+prio=low
 
 envs=( "halfcheetah-medium-v2" "hopper-medium-v2" "walker2d-medium-v2" \
 	"halfcheetah-medium-expert-v2"  "hopper-medium-expert-v2" "walker2d-medium-expert-v2" \
@@ -10,23 +10,23 @@ envs=( "halfcheetah-medium-v2" "hopper-medium-v2" "walker2d-medium-v2" \
 	)
 
 
-# for ((i=0;i<1;i+=1)); do 
-# 	for env in ${envs[*]}; do
-# 		PRIORITY=$prio NS=$ns make run cmd="python main.py --env $env --seed $i \
-# 			--critic_type v --td_type onestep --bc_eval_steps 1000000 \
-# 			--reweight --tag bc_adv_reweight"
-# 	    sleep 5;
-# 	done
-# done
+for ((i=0;i<1;i+=1)); do 
+	for env in ${envs[*]}; do
+		PRIORITY=$prio NS=$ns make run cmd="python main.py --env $env --seed $i \
+			--critic_type v --td_type onestep --bc_eval_steps 1000000 \
+			--reweight --tag bc_adv_reweight"
+	    sleep 5;
+	done
+done
 
-# for ((i=0;i<1;i+=1)); do 
-# 	for env in ${envs[*]}; do
-# 		PRIORITY=$prio NS=$ns make run cmd="python main.py --env $env --seed $i \
-# 			--critic_type vq --td_type onestep --bc_eval_steps 1000000 \
-# 			--reweight --tag bc_adv_reweight"
-# 	    sleep 5;
-# 	done
-# done
+for ((i=0;i<1;i+=1)); do 
+	for env in ${envs[*]}; do
+		PRIORITY=$prio NS=$ns make run cmd="python main.py --env $env --seed $i \
+			--critic_type vq --td_type onestep --bc_eval_steps 1000000 \
+			--reweight --tag bc_adv_reweight"
+	    sleep 5;
+	done
+done
 
 
 for ((i=0;i<1;i+=1)) ; do 

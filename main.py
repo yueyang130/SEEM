@@ -64,6 +64,7 @@ if __name__ == "__main__":
     parser.add_argument("--bc_eval_steps", type=int, default=1e6)       
     parser.add_argument("--critic_type", type=str, default='v', choices=['v', 'vq'])   
     parser.add_argument("--td_type", type=str, default='onestep', choices=['onestep', 'mc', 'gae']) 
+    parser.add_argument("--bc_lr_schedule", type=str, default='cosine', choices=['cosine', 'linear', 'none']) 
     parser.add_argument("--weight_freq", default=5e4, type=int)    
     # TD3
     parser.add_argument("--expl_noise", default=0.1)                # Std of Gaussian exploration noise
@@ -90,7 +91,7 @@ if __name__ == "__main__":
     # resample and reweight can not been applied together
     assert not args.resample or not args.reweight
 
-    file_name = f"{args.critic_type}_{args.td_type}_{args.env}_{args.seed}"
+    file_name = f"{args.critic_type}_{args.td_type}_{args.bc_lr_schedule}_{args.env}_{args.seed}"
     print("---------------------------------------")
     print(f"Policy: {args.policy}, Env: {args.env}, Seed: {args.seed}")
     print("---------------------------------------")
@@ -125,6 +126,7 @@ if __name__ == "__main__":
         "bc_eval_steps": args.bc_eval_steps,
         "critic_type": args.critic_type,
         "td_type": args.td_type,
+        "bc_lr_schedule": args.bc_lr_schedule,
         # TD3
         "policy_noise": args.policy_noise * max_action,
         "noise_clip": args.noise_clip * max_action,
@@ -156,9 +158,9 @@ if __name__ == "__main__":
 
     if args.bc_eval:
         if args.critic_type == 'v':
-            bc_advantage = V_Advantage(state_dim, action_dim, args.td_type, args.discount, args.tau)
+            bc_advantage = V_Advantage(state_dim, action_dim, args.td_type, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau)
         elif args.critic_type == 'vq':
-            bc_advantage = VQ_Advantage(state_dim, action_dim, args.td_type, args.discount, args.tau)
+            bc_advantage = VQ_Advantage(state_dim, action_dim, args.td_type, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau)
         else:
             raise NotImplementedError
 
@@ -187,7 +189,7 @@ if __name__ == "__main__":
 
     # time0 = time.time()
     evaluations = []
-    for t in range(int(args.max_timesteps)):
+    for t in range(int(args.bc_eval_steps), int(args.bc_eval_steps + args.max_timesteps)):
         infos = policy.train(replay_buffer)
         if (t + 1) % args.log_freq == 0:
             for k, v in infos.items():
