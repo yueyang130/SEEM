@@ -18,7 +18,6 @@ class Actor(nn.Module):
 		
 		self.max_action = max_action
 		
-
 	def forward(self, state):
 		a = F.relu(self.l1(state))
 		a = F.relu(self.l2(a))
@@ -78,6 +77,7 @@ class TD3_BC(object):
 		noise_clip=0.5,
 		policy_freq=2,
 		alpha=2.5,
+		**kwargs,
 	):
 
 		self.actor = Actor(state_dim, action_dim, max_action).to(device)
