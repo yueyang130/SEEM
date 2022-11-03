@@ -62,7 +62,7 @@ if __name__ == "__main__":
     # generate weight
     parser.add_argument("--bc_eval", type=int, default=1)       
     parser.add_argument("--bc_eval_steps", type=int, default=1e6)       
-    parser.add_argument("--critic_type", type=str, default='v', choices=['v', 'vq'])   
+    parser.add_argument("--critic_type", type=str, default='doublev', choices=['v', 'vq', 'doublev'])   
     parser.add_argument("--td_type", type=str, default='onestep', choices=['onestep', 'mc', 'gae']) 
     parser.add_argument("--bc_lr_schedule", type=str, default='cosine', choices=['cosine', 'linear', 'none']) 
     parser.add_argument("--weight_freq", default=5e4, type=int)    
@@ -159,6 +159,8 @@ if __name__ == "__main__":
     if args.bc_eval:
         if args.critic_type == 'v':
             bc_advantage = V_Advantage(state_dim, action_dim, args.td_type, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau)
+        if args.critic_type == 'doublev':
+            bc_advantage = DoubleV_Advantage(state_dim, action_dim, args.td_type, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau)
         elif args.critic_type == 'vq':
             bc_advantage = VQ_Advantage(state_dim, action_dim, args.td_type, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau)
         else:

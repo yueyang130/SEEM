@@ -24,6 +24,30 @@ class ValueNet(nn.Module):
 		return v1
 
 
+class DoubleValueNet(nn.Module):
+	def __init__(self, state_dim):
+		super(DoubleValueNet, self).__init__()
+		self.l1 = nn.Linear(state_dim, 256)
+		self.l2 = nn.Linear(256, 256)
+		self.l3 = nn.Linear(256, 1)
+
+		self.l4 = nn.Linear(state_dim, 256)
+		self.l5 = nn.Linear(256, 256)
+		self.l6 = nn.Linear(256, 1)
+
+
+
+	def forward(self, state):
+		v1 = F.relu(self.l1(state))
+		v1 = F.relu(self.l2(v1))
+		v1 = self.l3(v1)
+
+		v2 = F.relu(self.l4(state))
+		v2 = F.relu(self.l5(v2))
+		v2 = self.l6(v2)
+		return v1, v2
+
+
 class Advantage(nn.Module):
 	def __init__(
 		self,
@@ -75,10 +99,6 @@ class V_Advantage(Advantage):
 		self.value_target = copy.deepcopy(self.value)
 		self.value_optimizer = torch.optim.Adam(self.value.parameters(), lr=3e-4)
 		self.value_lr_scheduler = get_scheduler(self.value_optimizer, bc_lr_schedule, maxstep)
-		
-		self.discount = discount
-		self.tau = tau
-		self.total_it = 0
 
 	
 	def train(self, replay_buffer):
@@ -126,6 +146,75 @@ class V_Advantage(Advantage):
 
 
 
+class DoubleV_Advantage(V_Advantage):
+	def __init__(
+		self,
+		state_dim,
+		action_dim,
+		td_type,
+		bc_lr_schedule,
+		maxstep,
+		discount=0.99,
+		tau=0.005,
+	):
+		super().__init__(state_dim, action_dim, td_type, bc_lr_schedule, maxstep)
+		self.value = DoubleValueNet(state_dim).to(device)
+		self.value_target = copy.deepcopy(self.value)
+		self.value_optimizer = torch.optim.Adam(self.value.parameters(), lr=3e-4)
+		self.value_lr_scheduler = get_scheduler(self.value_optimizer, bc_lr_schedule, maxstep)
+
+	
+	def train(self, replay_buffer):
+		self.total_it += 1
+		# Sample replay buffer 
+		data = replay_buffer.bc_eval_sample()
+		state, action, next_state, reward, not_done, returns = data
+
+		with torch.no_grad():
+			v_target = self.get_target_value(data)
+		v1, v2 = self.value(state)
+		# Compute critic loss
+		value_loss = F.mse_loss(v1, v_target).mean() + F.mse_loss(v2, v_target).mean()
+
+		# Optimize the critic
+		self.value_optimizer.zero_grad()
+		value_loss.backward()
+		self.value_optimizer.step()
+
+		# Update the frozen target models
+		self.update_target()
+		self.value_lr_scheduler.step()
+
+
+		return {
+			"value_loss": value_loss.mean().cpu(),
+			"v1": v1.mean().cpu(),
+			"v2": v2.mean().cpu(),
+			"value_lr": self.value_optimizer.param_groups[0]['lr'],
+		}
+
+	@torch.no_grad()
+	def get_target_value(self, data):
+		state, action, next_state, reward, not_done, returns = data
+		if self.td_type == 'onestep':
+			v1, v2 = self.value_target(next_state)
+			return reward + not_done * self.discount * torch.minimum(v1, v2)
+		elif self.td_type == 'mc':
+			# 1. from current timestep t from T; 2. discounted
+			raise NotImplementedError
+		elif self.td_type == 'gae':
+			raise NotImplementedError
+		else:
+			raise NotImplementedError
+
+	@torch.no_grad()
+	def adv(self, data):
+		q = self.get_target_value(data)
+		v1, v2 = self.value(data[0])
+		v = torch.minimum(v1, v2)
+		return q - v, q, v
+
+
 class VQ_Advantage(Advantage):
 	def __init__(
 		self,
@@ -147,11 +236,6 @@ class VQ_Advantage(Advantage):
 		self.critic_target = copy.deepcopy(self.critic)
 		self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=3e-4)
 		self.critic_lr_scheduler = get_scheduler(self.critic_optimizer, bc_lr_schedule, maxstep)
-
-		self.discount = discount
-		self.tau = tau
-		self.total_it = 0
-
 	
 	def train(self, replay_buffer):
 		self.total_it += 1
