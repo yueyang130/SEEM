@@ -5,14 +5,15 @@ import jax
 import jax.numpy as jnp
 import numpy as np
 import optax
-from algos.model import update_target_network
 from flax.training.train_state import TrainState
 from ml_collections import ConfigDict
 
+from algos.model import update_target_network
+from core.core_api import Algo
 from utilities.jax_utils import mse_loss, next_rng, value_and_multi_grad
 
 
-class TD3(object):
+class TD3(Algo):
 
   @staticmethod
   def get_default_config(updates=None):

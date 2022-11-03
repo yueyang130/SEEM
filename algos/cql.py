@@ -10,11 +10,12 @@ from ml_collections import ConfigDict
 from tensorflow_probability.substrates import jax as tfp
 
 from algos.model import Scalar, update_target_network
+from core.core_api import Algo
 from utilities.jax_utils import mse_loss, next_rng, value_and_multi_grad
 from utilities.utils import prefix_metrics
 
 
-class CQL(object):
+class CQL(Algo):
 
   @staticmethod
   def get_default_config(updates=None):
@@ -113,15 +114,15 @@ class CQL(object):
     self._model_keys = tuple(model_keys)
     self._total_steps = 0
 
-  def train(self, batch, bc=False):
+  def train(self, batch):
     self._total_steps += 1
     self._train_states, self._target_qf_params, metrics = self._train_step(
-      self._train_states, self._target_qf_params, next_rng(), batch, bc
+      self._train_states, self._target_qf_params, next_rng(), batch
     )
     return metrics
 
-  @partial(jax.jit, static_argnames=('self', 'bc'))
-  def _train_step(self, train_states, target_qf_params, rng, batch, bc=False):
+  @partial(jax.jit, static_argnames=('self'))
+  def _train_step(self, train_states, target_qf_params, rng, batch):
 
     def loss_fn(train_params, rng):
       observations = batch['observations']
@@ -165,14 +166,11 @@ class CQL(object):
         raise RuntimeError('{} not implemented!'.format(self.config.bc_mode))
 
       # get (offline)rl loss
-      if bc:
-        rl_loss = bc_loss
-      else:
-        q_new_actions = jnp.minimum(
-          self.qf.apply(train_params['qf1'], observations, new_actions),
-          self.qf.apply(train_params['qf2'], observations, new_actions),
-        )
-        rl_loss = (alpha * log_pi - q_new_actions).mean()
+      q_new_actions = jnp.minimum(
+        self.qf.apply(train_params['qf1'], observations, new_actions),
+        self.qf.apply(train_params['qf2'], observations, new_actions),
+      )
+      rl_loss = (alpha * log_pi - q_new_actions).mean()
 
       # total loss for policy
       policy_loss = rl_loss

@@ -27,11 +27,12 @@ from ml_collections import ConfigDict
 from tensorflow_probability.substrates import jax as tfp
 
 from algos.model import Scalar, update_target_network
+from core.core_api import Algo
 from utilities.jax_utils import mse_loss, next_rng, value_and_multi_grad
 from utilities.utils import prefix_metrics
 
 
-class MISA(object):
+class MISA(Algo):
 
   @staticmethod
   def get_default_config(updates=None):

@@ -28,7 +28,6 @@ FLAGS_DEF = define_flags_with_default(
   policy_log_std_offset=-1.0,
   algo_cfg=algo_cfg_default_collection,
   n_epochs=1200,
-  bc_epochs=0,
   n_train_step_per_epoch=1000,
   eval_period=10,
   eval_n_trajs=10,

@@ -13,6 +13,7 @@ from algos.model import (
   SamplerPolicy,
   TanhGaussianPolicy,
 )
+from core.core_api import Trainer
 from data import Dataset, DM2Gym, RandSampler, RLUPDataset
 from experiments.args import FLAGS_DEF
 from experiments.constants import (
@@ -39,7 +40,7 @@ from utilities.utils import (
 from viskit.logging import logger, setup_logger
 
 
-class MFTrainer:
+class MFTrainer(Trainer):
 
   def __init__(self):
     self._cfgs = absl.flags.FLAGS
@@ -76,7 +77,7 @@ class MFTrainer:
     self._sampler_policy: SamplerPolicy = None
 
   def train(self):
-    self.__setup()
+    self._setup()
 
     viskit_metrics = {}
     for epoch in range(self._cfgs.n_epochs):
@@ -85,12 +86,7 @@ class MFTrainer:
       with Timer() as train_timer:
         for _ in tqdm.tqdm(range(self._cfgs.n_train_step_per_epoch)):
           batch = batch_to_jax(self._dataset.sample())
-          metrics.update(
-            prefix_metrics(
-              self._agent.train(batch, bc=epoch < self._cfgs.bc_epochs),
-              "agent"
-            )
-          )
+          metrics.update(prefix_metrics(self._agent.train(batch), "agent"))
 
       with Timer() as eval_timer:
         if epoch == 0 or (epoch + 1) % self._cfgs.eval_period == 0:
@@ -143,24 +139,24 @@ class MFTrainer:
       }
       self._wandb_logger.save_pickle(save_data, "model_final.pkl")
 
-  def __setup(self):
+  def _setup(self):
     set_random_seed(self._cfgs.seed)
 
     # setup logger
-    self._wandb_logger = self.__setup_logger()
+    self._wandb_logger = self._setup_logger()
 
     # setup dataset and eval_sample
-    self._dataset, self._eval_sampler = self.__setup_dataset()
+    self._dataset, self._eval_sampler = self._setup_dataset()
 
     # setup policy
-    self._policy = self.__setup_policy()
+    self._policy = self._setup_policy()
 
     # setup Q-function
-    self._qf = self.__setup_qf()
+    self._qf = self._setup_qf()
 
     # setup vf only for IQL
     if self._algo_type == ALGO.IQL:
-      self._vf = self.__setup_vf()
+      self._vf = self._setup_vf()
 
     # setup agent
     if self._algo_type == ALGO.IQL:
@@ -175,7 +171,7 @@ class MFTrainer:
       self._agent.policy, self._agent.train_params["policy"]
     )
 
-  def __setup_logger(self):
+  def _setup_logger(self):
     env_name_high = ENVNAME_MAP[self._env]
     env_name_full = self._cfgs.env
     dataset_name_abbr = DATASET_ABBR_MAP[self._cfgs.dataset]
@@ -196,7 +192,7 @@ class MFTrainer:
 
     return wandb_logger
 
-  def __setup_d4rl(self):
+  def _setup_d4rl(self):
     eval_sampler = TrajSampler(
       gym.make(self._cfgs.env), self._cfgs.max_traj_length
     )
@@ -234,7 +230,7 @@ class MFTrainer:
 
     return dataset, eval_sampler
 
-  def __setup_rlup(self):
+  def _setup_rlup(self):
     path = Path(__file__).absolute().parent.parent / 'data'
     dataset = RLUPDataset(
       self._cfgs.rl_unplugged_task_class,
@@ -249,7 +245,7 @@ class MFTrainer:
 
     return dataset, eval_sampler
 
-  def __setup_dataset(self):
+  def _setup_dataset(self):
     self._obs_mean = 0
     self._obs_std = 1
     self._obs_clip = np.inf
@@ -257,9 +253,9 @@ class MFTrainer:
     dataset_type = DATASET_MAP[self._cfgs.dataset]
 
     if dataset_type == DATASET.D4RL:
-      dataset, eval_sampler = self.__setup_d4rl()
+      dataset, eval_sampler = self._setup_d4rl()
     elif dataset_type == DATASET.RLUP:
-      dataset, eval_sampler = self.__setup_rlup()
+      dataset, eval_sampler = self._setup_rlup()
     else:
       raise NotImplementedError
 
@@ -272,8 +268,8 @@ class MFTrainer:
 
     return dataset, eval_sampler
 
-  def __setup_policy(self):
-    if self._algo_type == ALGO.MISA or self._algo_type == ALGO.CRR or self._algo_type == ALGO.IQL or self._algo_type == ALGO.CQL:
+  def _setup_policy(self):
+    if self._algo_type in [ALGO.MISA, ALGO.CRR, ALGO.IQL, ALGO.CQL]:
       policy = TanhGaussianPolicy(
         self._observation_dim,
         self._action_dim,
@@ -288,8 +284,8 @@ class MFTrainer:
 
     return policy
 
-  def __setup_qf(self):
-    if self._algo_type == ALGO.MISA or self._algo_type == ALGO.CRR or self._algo_type == ALGO.IQL or self._algo_type == ALGO.CQL:
+  def _setup_qf(self):
+    if self._algo_type in [ALGO.MISA, ALGO.CRR, ALGO.IQL, ALGO.CQL]:
       qf = FullyConnectedQFunction(
         self._observation_dim,
         self._action_dim,
@@ -303,7 +299,7 @@ class MFTrainer:
 
     return qf
 
-  def __setup_vf(self):
+  def _setup_vf(self):
     vf = FullyConnectedVFunction(
       self._observation_dim,
       self._cfgs.qf_arch,
