@@ -3,7 +3,6 @@ from functools import partial
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 import optax
 from flax.training.train_state import TrainState
 from ml_collections import ConfigDict
@@ -33,7 +32,7 @@ class CRR(Algo):
     config.nstep = 1
     config.double_q = True
     config.avg_fn = 'mean'  # or max
-    config.merge_all = True
+    config.merge_all = False
     config.q_weight_method = 'min'
     config.use_expectile = True
     config.exp_tau = 0.7
@@ -46,7 +45,7 @@ class CRR(Algo):
     self.config = self.get_default_config(config)
     self.policy = policy
     self.qf = qf
-    self.observations_dim = policy.input_size
+    self.observation_dim = policy.input_size
     self.action_dim = policy.action_dim
 
     self._train_states = {}
@@ -57,7 +56,7 @@ class CRR(Algo):
     }[self.config.optimizer_type]
 
     policy_params = self.policy.init(
-      next_rng(), next_rng(), jnp.zeros((10, self.observations_dim))
+      next_rng(), next_rng(), jnp.zeros((10, self.observation_dim))
     )
     self._train_states['policy'] = TrainState.create(
       params=policy_params,
@@ -66,7 +65,7 @@ class CRR(Algo):
     )
 
     qf_params = self.qf.init(
-      next_rng(), jnp.zeros((10, self.observations_dim)),
+      next_rng(), jnp.zeros((10, self.observation_dim)),
       jnp.zeros((10, self.action_dim))
     )
     self._train_states['qf'] = TrainState.create(
@@ -79,7 +78,7 @@ class CRR(Algo):
 
     if self.config.double_q:
       qf2_params = self.qf.init(
-        next_rng(), jnp.zeros((10, self.observations_dim)),
+        next_rng(), jnp.zeros((10, self.observation_dim)),
         jnp.zeros((10, self.action_dim))
       )
       self._train_states['qf2'] = TrainState.create(
@@ -151,18 +150,17 @@ class CRR(Algo):
         loss_collection['qf2'] = qf2_loss * 0.5
 
       if self.config.use_expectile:
-        diff1 = q1_pred - q_target
-        exp_w1 = jnp.where(
-          diff1 > 0, self.config.exp_tau, 1 - self.config.exp_tau
+        diff = q1_pred - q_target
+        exp_w = jnp.where(
+          diff > 0, self.config.exp_tau, 1 - self.config.exp_tau
         )
-        loss_collection['qf'] = (exp_w1 * (diff1**2)).mean()
+        loss_collection['qf'] = (exp_w * (diff**2)).mean()
 
         if self.config.double_q:
           diff2 = q2_pred - q_target
           exp_w2 = jnp.where(
             diff2 > 0, self.config.exp_tau, 1 - self.config.exp_tau
           )
-
           loss_collection['qf2'] = (exp_w2 * (diff2**2)).mean()
 
       rng, split_rng = jax.random.split(rng)
@@ -185,10 +183,7 @@ class CRR(Algo):
           raise NotImplementedError
         q_pred = jnp.minimum(q1_pred, q2_pred)
 
-      if self.config.merge_all:
-        adv = q_pred - getattr(jnp, self.config.avg_fn)(v)
-      else:
-        adv = q_pred - getattr(jnp, self.config.avg_fn)(v, axis=0)
+      adv = q_pred - getattr(jnp, self.config.avg_fn)(v, axis=0)
 
       if self.config.crr_fn == 'exp':
         coef = jnp.minimum(
