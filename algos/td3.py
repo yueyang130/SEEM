@@ -31,48 +31,57 @@ class TD3(Algo):
       config.update(ConfigDict(updates).copy_and_resolve_references())
     return config
 
-  def __init__(self, config, actor, critic):
+  def __init__(self, config, policy, qf):
     self.config = self.get_default_config(config)
-    self.actor = actor
-    self.critic = critic
-    self.observation_dim = actor.observation_dim
-    self.action_dim = actor.action_dim
-    self.policy_noise = self.config.policy_noise * actor.max_action
-    self.max_action = actor.max_action
+    self.policy = policy
+    self.qf = qf
+    self.observation_dim = policy.observation_dim
+    self.action_dim = policy.action_dim
+    self.policy_noise = self.config.policy_noise * policy.max_action
+    self.max_action = policy.max_action
 
     self._total_steps = 0
     self._train_states = {}
 
-    actor_params = self.actor.init(
+    policy_params = self.policy.init(
       next_rng(),
       next_rng(),
       jnp.zeros((10, self.observation_dim)),
     )
-    self._train_states['actor'] = TrainState.create(
-      params=actor_params,
-      tx=optax.adam(self.config.lr),
-      apply_fn=None,
+    self._train_states['policy'] = TrainState.create(
+      params=policy_params, tx=optax.adam(self.config.lr), apply_fn=None
     )
 
-    critic_params = self.critic.init(
+    qf1_params = self.qf.init(
       next_rng(),
       jnp.zeros((10, self.observation_dim)),
       jnp.zeros((10, self.action_dim)),
     )
-    self._train_states['critic'] = TrainState.create(
-      params=critic_params,
+    self._train_states['qf1'] = TrainState.create(
+      params=qf1_params,
+      tx=optax.adam(self.config.lr),
+      apply_fn=None,
+    )
+    qf2_params = self.qf.init(
+      next_rng(),
+      jnp.zeros((10, self.observation_dim)),
+      jnp.zeros((10, self.action_dim)),
+    )
+    self._train_states['qf2'] = TrainState.create(
+      params=qf2_params,
       tx=optax.adam(self.config.lr),
       apply_fn=None,
     )
 
     self._tgt_params = deepcopy(
       {
-        'actor': actor_params,
-        'critic': critic_params,
+        'policy': policy_params,
+        'qf1': qf1_params,
+        'qf2': qf2_params,
       }
     )
 
-    self._model_keys = ('actor', 'critic')
+    self._model_keys = ('policy', 'qf1', 'qf2')
 
   @partial(jax.jit, static_argnames=('self', 'policy_update'))
   def _train_step(
@@ -95,40 +104,36 @@ class TD3(Algo):
         shape=actions.shape,
         dtype=actions.dtype,
       ) * self.policy_noise
-      next_action = self.actor.apply(params['actor'], rng, next_observations)
+      next_action = self.policy.apply(params['policy'], rng, next_observations)
       next_action = jnp.clip(
         next_action + noise, -self.max_action, self.max_action
       )
 
       # Compute the target Q values (without gradient)
-      tgt_q1, tgt_q2 = self.critic.apply(
-        tgt_params['critic'], next_observations, next_action
-      )
+      tgt_q1 = self.qf.apply(tgt_params['qf1'], next_observations, next_action)
+      tgt_q2 = self.qf.apply(tgt_params['qf2'], next_observations, next_action)
       tgt_q = jnp.minimum(tgt_q1, tgt_q2)
       tgt_q = rewards + (1 - dones) * self.config.discount * tgt_q
       tgt_q = jax.lax.stop_gradient(tgt_q)
 
       # Compute the current Q estimates
-      cur_q1, cur_q2 = self.critic.apply(
-        params['critic'], observations, actions
-      )
+      cur_q1 = self.qf.apply(params['qf1'], observations, actions)
+      cur_q2 = self.qf.apply(params['qf2'], observations, actions)
 
-      # Critic loss
-      critic1_loss = mse_loss(cur_q1, tgt_q)
-      critic2_loss = mse_loss(cur_q2, tgt_q)
-      critic_loss = critic1_loss + critic2_loss
+      # qf loss
+      qf1_loss = mse_loss(cur_q1, tgt_q)
+      qf2_loss = mse_loss(cur_q2, tgt_q)
+      qf_loss = qf1_loss + qf2_loss
 
-      # Compute the actor loss
-      new_actions = self.actor.apply(params['actor'], rng, observations)
-      q = self.critic.apply(
-        params['critic'], observations, new_actions, method=self.critic.q1
-      )
+      # Compute the policy loss
+      new_actions = self.policy.apply(params['policy'], rng, observations)
+      q = self.qf.apply(params['qf1'], observations, new_actions)
       q_abs_mean = jax.lax.stop_gradient(jnp.abs(q).mean())
       lmbda = self.config.alpha / q_abs_mean
       bc_loss = mse_loss(new_actions, actions)
-      actor_loss = -lmbda * q.mean() + bc_loss
+      policy_loss = -lmbda * q.mean() + bc_loss
 
-      loss_collection = {'actor': actor_loss, 'critic': critic_loss}
+      loss_collection = {'policy': policy_loss, 'qf1': qf_loss, 'qf2': qf_loss}
       return tuple(loss_collection[key] for key in self.model_keys), locals()
 
     # Calculate losses and grads
@@ -137,30 +142,36 @@ class TD3(Algo):
       loss_fn, len(self.model_keys), has_aux=True
     )(params, tgt_params, rng)
 
-    # Update critic train states
-    train_states['critic'] = train_states['critic'].apply_gradients(
-      grads=grads[1]['critic']
+    # Update qf train states
+    train_states['qf1'] = train_states['qf1'].apply_gradients(
+      grads=grads[1]['qf1']
+    )
+    train_states['qf2'] = train_states['qf2'].apply_gradients(
+      grads=grads[2]['qf2']
     )
 
-    # Update actor train states if necessary
+    # Update policy train states if necessary
     if policy_update:
-      train_states['actor'] = train_states['actor'].apply_gradients(
-        grads=grads[0]['actor']
+      train_states['policy'] = train_states['policy'].apply_gradients(
+        grads=grads[0]['policy']
       )
 
       # Update target parameters
-      tgt_params['actor'] = update_target_network(
-        train_states['actor'].params, tgt_params['actor'], self.config.tau
+      tgt_params['policy'] = update_target_network(
+        train_states['policy'].params, tgt_params['policy'], self.config.tau
       )
-      tgt_params['critic'] = update_target_network(
-        train_states['critic'].params, tgt_params['critic'], self.config.tau
+      tgt_params['qf1'] = update_target_network(
+        train_states['qf1'].params, tgt_params['qf1'], self.config.tau
+      )
+      tgt_params['qf2'] = update_target_network(
+        train_states['qf2'].params, tgt_params['qf2'], self.config.tau
       )
 
     metrics = dict(
-      actor_loss=aux_values['actor_loss'],
-      critic_loss=aux_values['critic_loss'],
-      critic1_loss=aux_values['critic1_loss'],
-      critic2_loss=aux_values['critic2_loss'],
+      policy_loss=aux_values['policy_loss'],
+      qf_loss=aux_values['qf_loss'],
+      qf1_loss=aux_values['qf1_loss'],
+      qf2_loss=aux_values['qf2_loss'],
       bc_loss=aux_values['bc_loss'],
       cur_q1=aux_values['cur_q1'].mean(),
       cur_q2=aux_values['cur_q2'].mean(),
@@ -176,11 +187,8 @@ class TD3(Algo):
   def train(self, batch):
     self._total_steps += 1
     self._train_states, self._tgt_params, metrics = self._train_step(
-      self._train_states,
-      self._tgt_params,
-      next_rng(),
-      batch,
-      self._total_steps % self.config.policy_freq == 0,
+      self._train_states, self._tgt_params, next_rng(), batch,
+      self._total_steps % self.config.policy_freq == 0
     )
     return metrics
 

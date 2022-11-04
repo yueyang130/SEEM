@@ -266,3 +266,25 @@ class SamplerPolicy(object):
       actions = actions[0]
     assert jnp.all(jnp.isfinite(actions))
     return jax.device_get(actions)
+
+
+class DirectMappingPolicy(nn.Module):
+  observation_dim: int
+  action_dim: int
+  max_action: int
+  arch: str = '256-256'
+  orthogonal_init: bool = False
+
+  def setup(self):
+    self.base_network = FullyConnectedNetwork(
+      output_dim=self.action_dim,
+      arch=self.arch,
+      orthogonal_init=self.orthogonal_init
+    )
+
+  def __call__(self, rng, observations, deterministic=True, repeat=None):
+    # `rng` and `deterministic` are ununsed parameters
+    if repeat is not None:
+      observations = extend_and_repeat(observations, 1, repeat)
+    action = self.base_network(observations)
+    return jnp.tanh(action) * self.max_action

@@ -108,7 +108,7 @@ class IQL(Algo):
   def train(self, batch):
     self._total_steps += 1
     self._train_states, self._target_qf_params, metrics = self._train_step(
-      self._train_states, self._target_qf_params, next_rng(), batch, bc
+      self._train_states, self._target_qf_params, next_rng(), batch
     )
     return metrics
 

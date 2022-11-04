@@ -19,5 +19,6 @@ from algos.cql import CQL
 from algos.crr import CRR
 from algos.iql import IQL
 from algos.misa import MISA
+from algos.td3 import TD3
 
-__all__ = ["MISA", "CRR", "IQL", "CQL"]
+__all__ = ["MISA", "CRR", "IQL", "CQL", "TD3"]

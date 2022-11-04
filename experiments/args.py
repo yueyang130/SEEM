@@ -8,7 +8,7 @@ for alg in algos.__all__:
   algo_cfg_default_collection.update(getattr(algos, alg).get_default_config())
 
 FLAGS_DEF = define_flags_with_default(
-  algo="MISA",
+  algo="TD3",
   type="model-free",
   env="walker2d-medium-v2",
   dataset='d4rl',

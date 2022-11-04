@@ -8,6 +8,7 @@ from flax import linen as nn
 
 import algos
 from algos.model import (
+  DirectMappingPolicy,
   FullyConnectedQFunction,
   FullyConnectedVFunction,
   SamplerPolicy,
@@ -261,6 +262,7 @@ class MFTrainer(Trainer):
 
     self._observation_dim = eval_sampler.env.observation_space.shape[0]
     self._action_dim = eval_sampler.env.action_space.shape[0]
+    self._max_action = float(eval_sampler.env.action_space.high[0])
 
     if self._cfgs.algo_cfg.target_entropy >= 0.0:
       action_space = eval_sampler.env.action_space
@@ -279,13 +281,21 @@ class MFTrainer(Trainer):
         self._cfgs.policy_log_std_offset,
         use_layer_norm=self._cfgs.use_layer_norm,
       )
+    elif self._algo_type == ALGO.TD3:
+      policy = DirectMappingPolicy(
+        self._observation_dim,
+        self._action_dim,
+        self._max_action,
+        self._cfgs.policy_arch,
+        self._cfgs.orthogonal_init,
+      )
     else:
       raise NotImplementedError
 
     return policy
 
   def _setup_qf(self):
-    if self._algo_type in [ALGO.MISA, ALGO.CRR, ALGO.IQL, ALGO.CQL]:
+    if self._algo_type in [ALGO.MISA, ALGO.CRR, ALGO.IQL, ALGO.CQL, ALGO.TD3]:
       qf = FullyConnectedQFunction(
         self._observation_dim,
         self._action_dim,

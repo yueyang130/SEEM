@@ -47,9 +47,8 @@ class CQL(Algo):
       config.update(ConfigDict(updates).copy_and_resolve_references())
     return config
 
-  def __init__(self, config, policy, qf, decoupled_q=False):
+  def __init__(self, config, policy, qf):
     self.config = self.get_default_config(config)
-    self.decoupled_q = decoupled_q
     self.policy = policy
     self.qf = qf
     self.observation_dim = policy.input_size
