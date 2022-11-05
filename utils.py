@@ -33,7 +33,7 @@ class PrefetchBalancedSampler(object):
 
 class ReplayBuffer(object):
     def __init__(self, state_dim, action_dim, batch_size, max_size=int(1e6), 
-                base_prob=0.0, resample=False, reweight=False):
+                base_prob=0.0, resample=False, reweight=False, n_step=3, discount=0.99):
         self.max_size = max_size
         self.ptr = 0
         self.size = 0
@@ -41,6 +41,9 @@ class ReplayBuffer(object):
         self.base_prob = base_prob
         self.resample = resample
         self.reweight = reweight
+        self.n_step = n_step
+        self.discount = discount
+
 
         self.state = np.zeros((max_size, state_dim))
         self.action = np.zeros((max_size, action_dim))
@@ -69,7 +72,8 @@ class ReplayBuffer(object):
             torch.FloatTensor(self.next_state[ind]).to(self.device),
             torch.FloatTensor(self.reward[ind]).to(self.device),
             torch.FloatTensor(self.not_done[ind]).to(self.device),
-            torch.FloatTensor(self. returns[ind]).to(self.device)
+            torch.FloatTensor(self.dones_float[ind]).to(self.device),
+            torch.FloatTensor(self.ret[ind]).to(self.device)
         )
 
     def bc_eval_sample(self):
@@ -107,8 +111,15 @@ class ReplayBuffer(object):
             else:
                 dones_float[i] = 0
         dones_float[-1] = 1
-        self.dones_float = dones_float
+        self.dones_float = dones_float.reshape(-1,1) # time limit truncated or terminal state
 
+        # discounted return-to-go
+        ret = np.zeros((self.size+1, 1))
+        for t in reversed(range(self.size)):
+            ret[t] = self.reward[t] + self.discount * (1 - self.dones_float[t]) * ret[t+1]
+        self.ret = ret[:-1]
+
+        # accumulative return for traj
         returns = self.compute_return()
         self.returns = returns
         probs = (returns - returns.min()) / (returns.max() - returns.min()) + self.base_prob

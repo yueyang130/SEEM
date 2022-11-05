@@ -53,48 +53,94 @@ class Advantage(nn.Module):
 		self,
 		state_dim,
 		action_dim,
-		td_type,
 		discount=0.99,
 		tau=0.005,
+		td_type='nstep',
+		adv_type='gae',
+		lambd=0.95,
+		**kwargs,
 	):
 		super().__init__()
 		self.discount = discount
 		self.tau = tau
 		self.total_it = 0
 		self.td_type = td_type
+		self.adv_type = adv_type
+		self.lambd = lambd
 
+	# for train (target)
 	@torch.no_grad()
-	def get_target_value(self, data):
-		state, action, next_state, reward, not_done, returns = data
-		if self.td_type == 'onestep':
-			return reward + not_done * self.discount * self.value_target(next_state)
-		elif self.td_type == 'mc':
-			# 1. from current timestep t from T; 2. discounted
-			raise NotImplementedError
-		elif self.td_type == 'gae':
-			raise NotImplementedError
+	def get_value_target(self, state):
+		return self.value_target(state)
+
+	# for 
+	@torch.no_grad()
+	def td(self, data):
+		state, action, next_state, reward, not_done, dones_float, rets = data
+		if self.td_type == 'nstep':
+			if self.replay_buffer.n_step == 1:
+				return reward + not_done * self.discount * self.get_value_target(next_state)
+			else:
+				raise NotImplementedError
+		elif self.td_type == 'mc': # 1. from current timestep t from T; 2. discounted
+			return rets
 		else:
 			raise NotImplementedError
+	
+	# for eval
+	def get_value(self, state):
+		return self.value(state)
+	
+	def set_replay_buffer(self, replay_buffer):
+		self.replay_buffer = replay_buffer
 
 	@torch.no_grad()
-	def adv(self, data):
-		q = self.get_target_value(data)
-		v = self.value(data[0])
-		return q - v, q, v
+	def eval(self, batch_size=256):
+		values, next_values = [], []
+		for l in range(0, self.replay_buffer.size, batch_size):
+			r = min(l+batch_size, self.replay_buffer.size)
+			data = self.replay_buffer.sample_by_ind(list(range(l, r)))
+			state, next_state = data[0], data[2]
+			v0 = self.get_value(state) 
+			v1 = self.get_value(next_state)
+			values.append(v0.cpu())
+			next_values.append(v1.cpu())
+		values, next_values = np.concatenate(values),  np.concatenate(next_values)
+		rewards, not_dones, dones_float = self.replay_buffer.reward, self.replay_buffer.not_done, self.replay_buffer.dones_float
+		bs = rewards.shape[0]
+		if self.adv_type == 'nstep':
+			if self.replay_buffer.n_step == 1:
+				q = rewards + not_dones * self.discount * next_values
+				adv = q - values
+			else:
+				raise NotImplementedError
+		if self.adv_type == 'gae':
+			adv = np.zeros((bs+1, 1))
+			delta = rewards + not_dones * self.discount * next_values - values 
+			for t in reversed(range(bs)):
+				# ?unbiased gae
+				adv[t] = delta[t] + self.discount * self.lambd * (1 - dones_float[t]) * adv[t+1]
+			adv = adv[:-1]
+			q = adv + values
+		if self.adv_type == 'mc':
+			q = self.replay_buffer.ret
+			adv = q - values
+			
+		return adv, q, values
 
-
+		
 class V_Advantage(Advantage):
 	def __init__(
 		self,
 		state_dim,
 		action_dim,
-		td_type,
 		bc_lr_schedule,
 		maxstep,
 		discount=0.99,
 		tau=0.005,
+		**kwargs,
 	):
-		super(V_Advantage, self).__init__(state_dim, action_dim, td_type)
+		super().__init__(state_dim, action_dim, discount, tau, **kwargs)
 		self.value = ValueNet(state_dim).to(device)
 		self.value_target = copy.deepcopy(self.value)
 		self.value_optimizer = torch.optim.Adam(self.value.parameters(), lr=3e-4)
@@ -105,10 +151,10 @@ class V_Advantage(Advantage):
 		self.total_it += 1
 		# Sample replay buffer 
 		data = replay_buffer.bc_eval_sample()
-		state, action, next_state, reward, not_done, returns = data
+		state = data[0]
 
 		with torch.no_grad():
-			v_target = self.get_target_value(data)
+			v_target = self.td(data)
 		v = self.value(state)
 		# Compute critic loss
 		value_loss = F.mse_loss(v, v_target).mean()
@@ -151,13 +197,13 @@ class DoubleV_Advantage(V_Advantage):
 		self,
 		state_dim,
 		action_dim,
-		td_type,
 		bc_lr_schedule,
 		maxstep,
 		discount=0.99,
 		tau=0.005,
+		**kwargs,
 	):
-		super().__init__(state_dim, action_dim, td_type, bc_lr_schedule, maxstep)
+		super().__init__(state_dim, action_dim, bc_lr_schedule, maxstep, discount, tau, **kwargs)
 		self.value = DoubleValueNet(state_dim).to(device)
 		self.value_target = copy.deepcopy(self.value)
 		self.value_optimizer = torch.optim.Adam(self.value.parameters(), lr=3e-4)
@@ -168,10 +214,10 @@ class DoubleV_Advantage(V_Advantage):
 		self.total_it += 1
 		# Sample replay buffer 
 		data = replay_buffer.bc_eval_sample()
-		state, action, next_state, reward, not_done, returns = data
+		state = data[0]
 
 		with torch.no_grad():
-			v_target = self.get_target_value(data)
+			v_target = self.td(data)
 		v1, v2 = self.value(state)
 		# Compute critic loss
 		value_loss = F.mse_loss(v1, v_target).mean() + F.mse_loss(v2, v_target).mean()
@@ -192,27 +238,17 @@ class DoubleV_Advantage(V_Advantage):
 			"v2": v2.mean().cpu(),
 			"value_lr": self.value_optimizer.param_groups[0]['lr'],
 		}
-
+	
+	# for train (target)
 	@torch.no_grad()
-	def get_target_value(self, data):
-		state, action, next_state, reward, not_done, returns = data
-		if self.td_type == 'onestep':
-			v1, v2 = self.value_target(next_state)
-			return reward + not_done * self.discount * torch.minimum(v1, v2)
-		elif self.td_type == 'mc':
-			# 1. from current timestep t from T; 2. discounted
-			raise NotImplementedError
-		elif self.td_type == 'gae':
-			raise NotImplementedError
-		else:
-			raise NotImplementedError
+	def get_value_target(self, state):
+		v1, v2 =  self.value_target(state)
+		return torch.minimum(v1, v2)
 
-	@torch.no_grad()
-	def adv(self, data):
-		q = self.get_target_value(data)
-		v1, v2 = self.value(data[0])
-		v = torch.minimum(v1, v2)
-		return q - v, q, v
+	# for eval: use value network rather than target value_network
+	def get_value(self, state):
+		v1, v2 = self.value(state)
+		return torch.minimum(v1, v2)
 
 
 class VQ_Advantage(Advantage):
@@ -220,13 +256,13 @@ class VQ_Advantage(Advantage):
 		self,
 		state_dim,
 		action_dim,
-		td_type,
 		bc_lr_schedule,
 		maxstep,
 		discount=0.99,
 		tau=0.005,
+		**kwargs
 	):
-		super(VQ_Advantage, self).__init__(state_dim, action_dim, td_type)
+		super().__init__(state_dim, action_dim, discount, tau, **kwargs)
 		self.value = ValueNet(state_dim).to(device)
 		self.value_target = copy.deepcopy(self.value)
 		self.value_optimizer = torch.optim.Adam(self.value.parameters(), lr=3e-4)
@@ -244,7 +280,7 @@ class VQ_Advantage(Advantage):
 		state, action, next_state, reward, not_done, returns = data
 
 		with torch.no_grad():
-			v_target = self.get_target_value(data)
+			v_target = self.td(data)
 		q1, q2 = self.critic(state, action)
 		# Compute critic loss
 		critic_loss = (q1 - v_target)**2 + (q2 - v_target)**2

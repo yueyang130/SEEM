@@ -34,17 +34,6 @@ def eval_policy(policy, env_name, seed, mean, std, seed_offset=100, eval_episode
     return d4rl_score
 
 
-def eval_bc(bc_advantage, replay_buffer, batch_size=256):
-    advs, qs, vs = [], [], []
-    for l in range(0, replay_buffer.size, batch_size):
-        r = min(l+batch_size, replay_buffer.size)
-        data = replay_buffer.sample_by_ind(list(range(l, r)))
-        adv, q, v = bc_advantage.adv(data)
-        advs.append(adv.squeeze().cpu())
-        qs.append(q.squeeze().cpu())
-        vs.append(v.squeeze().cpu())
-    return np.concatenate(advs), np.concatenate(qs), np.concatenate(vs)
-
 
 if __name__ == "__main__":
     
@@ -63,7 +52,10 @@ if __name__ == "__main__":
     parser.add_argument("--bc_eval", type=int, default=1)       
     parser.add_argument("--bc_eval_steps", type=int, default=1e6)       
     parser.add_argument("--critic_type", type=str, default='doublev', choices=['v', 'vq', 'doublev'])   
-    parser.add_argument("--td_type", type=str, default='onestep', choices=['onestep', 'mc', 'gae']) 
+    parser.add_argument("--td_type", type=str, default='nstep', choices=['nstep', 'mc']) 
+    parser.add_argument("--adv_type", type=str, default='gae', choices=['nstep', 'mc', 'gae']) 
+    parser.add_argument("--n_step", type=int, default=1, help='n-step return') 
+    parser.add_argument("--lambd", type=float, default=0.95, help='gae lambda') 
     parser.add_argument("--bc_lr_schedule", type=str, default='cosine', choices=['cosine', 'linear', 'none']) 
     parser.add_argument("--weight_freq", default=5e4, type=int)    
     # TD3
@@ -91,7 +83,7 @@ if __name__ == "__main__":
     # resample and reweight can not been applied together
     assert not args.resample or not args.reweight
 
-    file_name = f"{args.critic_type}_{args.td_type}_{args.bc_lr_schedule}_{args.env}_{args.seed}"
+    file_name = f"{args.critic_type}_{args.td_type}_{args.adv_type}_{args.n_step}_{args.lambd}_{args.bc_lr_schedule}_{args.env}_{args.seed}"
     print("---------------------------------------")
     print(f"Policy: {args.policy}, Env: {args.env}, Seed: {args.seed}")
     print("---------------------------------------")
@@ -115,6 +107,14 @@ if __name__ == "__main__":
     action_dim = env.action_space.shape[0] 
     max_action = float(env.action_space.high[0])
 
+    adv_kawargs = {
+        "critic_type": args.critic_type,
+        "td_type": args.td_type,
+        "adv_type": args.adv_type,
+        "n_step": args.n_step,
+        "lambd": args.lambd,
+    }
+
     kwargs = {
         "state_dim": state_dim,
         "action_dim": action_dim,
@@ -124,9 +124,8 @@ if __name__ == "__main__":
         # generate weight
         "bc_eval": args.bc_eval,
         "bc_eval_steps": args.bc_eval_steps,
-        "critic_type": args.critic_type,
-        "td_type": args.td_type,
         "bc_lr_schedule": args.bc_lr_schedule,
+        **adv_kawargs,
         # TD3
         "policy_noise": args.policy_noise * max_action,
         "noise_clip": args.noise_clip * max_action,
@@ -146,7 +145,7 @@ if __name__ == "__main__":
             })
 
     replay_buffer = utils.ReplayBuffer(state_dim, action_dim, args.batch_size,
-        base_prob=args.base_prob, resample=args.resample, reweight=args.reweight)
+        base_prob=args.base_prob, resample=args.resample, reweight=args.reweight, n_step=args.n_step, discount=args.discount)
     replay_buffer.convert_D4RL(d4rl.qlearning_dataset(env))
     
     if 'antmaze' in args.env:
@@ -158,13 +157,14 @@ if __name__ == "__main__":
 
     if args.bc_eval:
         if args.critic_type == 'v':
-            bc_advantage = V_Advantage(state_dim, action_dim, args.td_type, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau)
+            bc_advantage = V_Advantage(state_dim, action_dim, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau, **adv_kawargs)
         if args.critic_type == 'doublev':
-            bc_advantage = DoubleV_Advantage(state_dim, action_dim, args.td_type, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau)
+            bc_advantage = DoubleV_Advantage(state_dim, action_dim, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau, **adv_kawargs)
         elif args.critic_type == 'vq':
-            bc_advantage = VQ_Advantage(state_dim, action_dim, args.td_type, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau)
+            bc_advantage = VQ_Advantage(state_dim, action_dim, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau, **adv_kawargs)
         else:
             raise NotImplementedError
+        bc_advantage.set_replay_buffer(replay_buffer)
 
         bc_eval_results = {}
         for t in range(int(args.bc_eval_steps)):
@@ -173,7 +173,7 @@ if __name__ == "__main__":
                 for k, v in infos.items():
                     wandb.log({f'bc/train/{k}': v}, step=t+1)
             if (t + 1) % args.weight_freq == 0:
-                adv, q, v = eval_bc(bc_advantage, replay_buffer)
+                adv, q, v = bc_advantage.eval()
                 bc_eval_results[t+1] = {'adv': adv, 'q': q, 'v': v}
                 wandb.log({f'bc/eval/q': q.mean()}, step=t+1)
                 wandb.log({f'bc/eval/v': v.mean()}, step=t+1)
