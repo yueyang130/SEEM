@@ -81,6 +81,21 @@ class ReplayBuffer(object):
         ind = np.random.randint(self.size, size=self.batch_size)
         return self.sample_by_ind(ind)
 
+    def sample_n_step_by_ind(self, ind):
+        return (
+            torch.FloatTensor(self.state[ind]).to(self.device),
+            torch.FloatTensor(self.action[ind]).to(self.device),
+            torch.FloatTensor(self.state_n[ind]).to(self.device),
+            torch.FloatTensor(self.ret_n[ind]).to(self.device),
+            torch.FloatTensor(self.done_n[ind]).to(self.device),
+        )
+
+    def bc_eval_sample_n(self):
+        # uniform sample
+        ind = np.random.randint(self.size, size=self.batch_size)
+        return self.sample_n_step_by_ind(ind)
+
+
     # use for training
     def sample(self):
         ind = self.sampler.sample()
@@ -134,6 +149,22 @@ class ReplayBuffer(object):
             self.sampler = PrefetchBalancedSampler(self.probs, self.size, self.batch_size, n_prefetch=1000)
         else:
             self.sampler = RandSampler(self.size, self.batch_size)
+
+        # n-step bootstrap for bc eval
+        if self.n_step == 1: return
+        ret_n = np.copy(self.reward)
+        # done_n = 1 - self.not_done
+        done_n = np.copy(self.dones_float)
+        for n in range(1, self.n_step):
+            # alternatively calculate return_n_step and done_n_step
+            ret_n[:-n] += (self.discount ** n) * self.reward[n:] * (1 - done_n[:-n])
+            done_n[:-n] = np.maximum(done_n[:-n], self.dones_float[n:])
+        # !  While here does not estimate value of the truncated state, we (intuitively) should.
+        state_n = np.zeros_like(self.state)
+        state_n[:-self.n_step+1] = self.next_state[self.n_step-1:]
+        
+        self.ret_n, self.done_n, self.state_n = ret_n, done_n, state_n
+
     
     def compute_return(self):
         returns, ret, start = [], 0, 0
@@ -153,10 +184,15 @@ class ReplayBuffer(object):
         self.next_state = (self.next_state - mean)/std
         return mean, std
 
-    def replace_weights(self, adv):
+    def replace_weights(self, adv, weight_func, exp_lambd=1.0):
         #? need set adv_prob_base?
-        positive_adv = adv - adv.min()
-        prob = positive_adv / positive_adv.sum()
+        if weight_func == 'linear':
+            positive_adv = adv - adv.min()
+            prob = positive_adv / positive_adv.sum()
+        elif weight_func == 'exp':
+            adv = adv / np.abs(adv).mean()
+            positive_adv = np.exp(exp_lambd * adv)
+            prob = positive_adv / positive_adv.sum()
         if self.reweight:
             if len(prob.shape) == 1:
                 prob = np.expand_dims(prob, 1)

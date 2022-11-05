@@ -58,6 +58,8 @@ if __name__ == "__main__":
     parser.add_argument("--lambd", type=float, default=0.95, help='gae lambda') 
     parser.add_argument("--bc_lr_schedule", type=str, default='cosine', choices=['cosine', 'linear', 'none']) 
     parser.add_argument("--weight_freq", default=5e4, type=int)    
+    parser.add_argument("--weight_func", default='linear', choices=['linear', 'exp'])    
+    parser.add_argument("--exp_lambd", default=1.0, type=float)    
     # TD3
     parser.add_argument("--expl_noise", default=0.1)                # Std of Gaussian exploration noise
     parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic
@@ -125,6 +127,8 @@ if __name__ == "__main__":
         "bc_eval": args.bc_eval,
         "bc_eval_steps": args.bc_eval_steps,
         "bc_lr_schedule": args.bc_lr_schedule,
+        "weight_func": args.weight_func,
+        "exp_lambd": args.exp_lambd,
         **adv_kawargs,
         # TD3
         "policy_noise": args.policy_noise * max_action,
@@ -179,7 +183,7 @@ if __name__ == "__main__":
                 wandb.log({f'bc/eval/v': v.mean()}, step=t+1)
                 wandb.log({f'bc/eval/abs_adv': np.abs(adv).mean()}, step=t+1)
                 wandb.log({f'bc/eval/positive_adv': (adv-adv.min()).mean()}, step=t+1)
-        replay_buffer.replace_weights(bc_eval_results[t+1]['adv'])
+        replay_buffer.replace_weights(bc_eval_results[t+1]['adv'], args.weight_func, args.exp_lambd)
         np.save(f'./weights/{file_name}.npy', bc_eval_results)
 
     # Initialize policy

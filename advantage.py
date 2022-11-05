@@ -76,12 +76,13 @@ class Advantage(nn.Module):
 	# for 
 	@torch.no_grad()
 	def td(self, data):
+		if self.td_type == 'nstep' and self.replay_buffer.n_step > 1:
+			state, action, state_n, ret_n, done_n = data
+			return ret_n + (1-done_n) * (self.discount**self.n_step) * self.get_value_target(state_n)	
+		
 		state, action, next_state, reward, not_done, dones_float, rets = data
-		if self.td_type == 'nstep':
-			if self.replay_buffer.n_step == 1:
-				return reward + not_done * self.discount * self.get_value_target(next_state)
-			else:
-				raise NotImplementedError
+		if self.td_type == 'nstep' and self.replay_buffer.n_step == 1:
+				return reward + not_done * self.discount * self.get_value_target(next_state)	
 		elif self.td_type == 'mc': # 1. from current timestep t from T; 2. discounted
 			return rets
 		else:
@@ -93,9 +94,28 @@ class Advantage(nn.Module):
 	
 	def set_replay_buffer(self, replay_buffer):
 		self.replay_buffer = replay_buffer
+		self.n_step = replay_buffer.n_step
 
 	@torch.no_grad()
 	def eval(self, batch_size=256):
+		n_step = self.replay_buffer.n_step
+		if self.adv_type == 'nstep' and n_step > 1:
+			ret_n, done_n = self.replay_buffer.ret_n, self.replay_buffer.done_n
+			values, next_values = [], []
+			for l in range(0, self.replay_buffer.size, batch_size):
+				r = min(l+batch_size, self.replay_buffer.size)
+				ind = list(range(l, r))
+				data = self.replay_buffer.sample_n_step_by_ind(ind)
+				state, next_state = data[0], data[2]
+				v0 = self.get_value(state) 
+				v1 = self.get_value(next_state)
+				values.append(v0.cpu())
+				next_values.append(v1.cpu())
+			values, next_values = np.concatenate(values),  np.concatenate(next_values)
+			q = ret_n + (1 - done_n) * (self.discount**n_step) * next_values
+			adv = q - values
+			return adv, q, values
+
 		values, next_values = [], []
 		for l in range(0, self.replay_buffer.size, batch_size):
 			r = min(l+batch_size, self.replay_buffer.size)
@@ -108,12 +128,9 @@ class Advantage(nn.Module):
 		values, next_values = np.concatenate(values),  np.concatenate(next_values)
 		rewards, not_dones, dones_float = self.replay_buffer.reward, self.replay_buffer.not_done, self.replay_buffer.dones_float
 		bs = rewards.shape[0]
-		if self.adv_type == 'nstep':
-			if self.replay_buffer.n_step == 1:
-				q = rewards + not_dones * self.discount * next_values
-				adv = q - values
-			else:
-				raise NotImplementedError
+		if self.adv_type == 'nstep' and n_step == 1:
+			q = rewards + not_dones * self.discount * next_values
+			adv = q - values
 		if self.adv_type == 'gae':
 			adv = np.zeros((bs+1, 1))
 			delta = rewards + not_dones * self.discount * next_values - values 
@@ -150,7 +167,10 @@ class V_Advantage(Advantage):
 	def train(self, replay_buffer):
 		self.total_it += 1
 		# Sample replay buffer 
-		data = replay_buffer.bc_eval_sample()
+		if self.td_type == 'nstep' and self.replay_buffer.n_step > 1:
+			data = replay_buffer.bc_eval_sample_n()
+		else:
+			data = replay_buffer.bc_eval_sample()
 		state = data[0]
 
 		with torch.no_grad():
@@ -213,7 +233,10 @@ class DoubleV_Advantage(V_Advantage):
 	def train(self, replay_buffer):
 		self.total_it += 1
 		# Sample replay buffer 
-		data = replay_buffer.bc_eval_sample()
+		if self.td_type == 'nstep' and self.replay_buffer.n_step > 1:
+			data = replay_buffer.bc_eval_sample_n()
+		else:
+			data = replay_buffer.bc_eval_sample()
 		state = data[0]
 
 		with torch.no_grad():
@@ -277,7 +300,7 @@ class VQ_Advantage(Advantage):
 		self.total_it += 1
 		# Sample replay buffer 
 		data = replay_buffer.bc_eval_sample()
-		state, action, next_state, reward, not_done, returns = data
+		state, action = data[0], data[1]
 
 		with torch.no_grad():
 			v_target = self.td(data)
