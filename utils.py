@@ -182,6 +182,7 @@ class ReplayBuffer(object):
         std = self.state.std(0,keepdims=True) + eps
         self.state = (self.state - mean)/std
         self.next_state = (self.next_state - mean)/std
+        self.state_n = (self.state_n - mean)/std
         return mean, std
 
     def replace_weights(self, adv, weight_func, exp_lambd=1.0):
