@@ -60,6 +60,7 @@ if __name__ == "__main__":
     parser.add_argument("--weight_freq", default=5e4, type=int)    
     parser.add_argument("--weight_func", default='linear', choices=['linear', 'exp'])    
     parser.add_argument("--exp_lambd", default=1.0, type=float)    
+    parser.add_argument("--scale", default=10.0, type=float, help="scale weights' standard deviation. Set zero means auto-scale")    
     # TD3
     parser.add_argument("--expl_noise", default=0.1)                # Std of Gaussian exploration noise
     parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic
@@ -129,6 +130,7 @@ if __name__ == "__main__":
         "bc_lr_schedule": args.bc_lr_schedule,
         "weight_func": args.weight_func,
         "exp_lambd": args.exp_lambd,
+        "scale": args.scale,
         **adv_kawargs,
         # TD3
         "policy_noise": args.policy_noise * max_action,
@@ -151,6 +153,8 @@ if __name__ == "__main__":
     replay_buffer = utils.ReplayBuffer(state_dim, action_dim, args.batch_size,
         base_prob=args.base_prob, resample=args.resample, reweight=args.reweight, n_step=args.n_step, discount=args.discount)
     replay_buffer.convert_D4RL(d4rl.qlearning_dataset(env))
+    # save return dist
+    np.save(f'./weights/{args.env}_returns.npy', replay_buffer.returns)
     
     if 'antmaze' in args.env:
         replay_buffer.reward -= 1.0
@@ -160,31 +164,40 @@ if __name__ == "__main__":
         mean,std = 0,1
 
     if args.bc_eval:
-        if args.critic_type == 'v':
-            bc_advantage = V_Advantage(state_dim, action_dim, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau, **adv_kawargs)
-        if args.critic_type == 'doublev':
-            bc_advantage = DoubleV_Advantage(state_dim, action_dim, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau, **adv_kawargs)
-        elif args.critic_type == 'vq':
-            bc_advantage = VQ_Advantage(state_dim, action_dim, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau, **adv_kawargs)
+        wp = f'./weights/{file_name}.npy'
+        if os.path.exists(wp):
+            eval_res = np.load(wp, allow_pickle=True).item()
+            itr = max(eval_res.keys())
+            adv = eval_res[itr]['adv']
+            print(f'Loading weights from {wp}')
         else:
-            raise NotImplementedError
-        bc_advantage.set_replay_buffer(replay_buffer)
+            if args.critic_type == 'v':
+                bc_advantage = V_Advantage(state_dim, action_dim, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau, **adv_kawargs)
+            if args.critic_type == 'doublev':
+                bc_advantage = DoubleV_Advantage(state_dim, action_dim, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau, **adv_kawargs)
+            elif args.critic_type == 'vq':
+                bc_advantage = VQ_Advantage(state_dim, action_dim, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau, **adv_kawargs)
+            else:
+                raise NotImplementedError
+            bc_advantage.set_replay_buffer(replay_buffer)
 
-        bc_eval_results = {}
-        for t in range(int(args.bc_eval_steps)):
-            infos = bc_advantage.train(replay_buffer)
-            if (t + 1) % args.log_freq == 0:
-                for k, v in infos.items():
-                    wandb.log({f'bc/train/{k}': v}, step=t+1)
-            if (t + 1) % args.weight_freq == 0:
-                adv, q, v = bc_advantage.eval()
-                bc_eval_results[t+1] = {'adv': adv, 'q': q, 'v': v}
-                wandb.log({f'bc/eval/q': q.mean()}, step=t+1)
-                wandb.log({f'bc/eval/v': v.mean()}, step=t+1)
-                wandb.log({f'bc/eval/abs_adv': np.abs(adv).mean()}, step=t+1)
-                wandb.log({f'bc/eval/positive_adv': (adv-adv.min()).mean()}, step=t+1)
-        replay_buffer.replace_weights(bc_eval_results[t+1]['adv'], args.weight_func, args.exp_lambd)
-        np.save(f'./weights/{file_name}.npy', bc_eval_results)
+            bc_eval_results = {}
+            for t in range(int(args.bc_eval_steps)):
+                infos = bc_advantage.train(replay_buffer)
+                if (t + 1) % args.log_freq == 0:
+                    for k, v in infos.items():
+                        wandb.log({f'bc/train/{k}': v}, step=t+1)
+                if (t + 1) % args.weight_freq == 0:
+                    adv, q, v = bc_advantage.eval()
+                    bc_eval_results[t+1] = {'adv': adv, 'q': q, 'v': v}
+                    wandb.log({f'bc/eval/q': q.mean()}, step=t+1)
+                    wandb.log({f'bc/eval/v': v.mean()}, step=t+1)
+                    wandb.log({f'bc/eval/abs_adv': np.abs(adv).mean()}, step=t+1)
+                    wandb.log({f'bc/eval/positive_adv': (adv-adv.min()).mean()}, step=t+1)
+            np.save(wp, bc_eval_results)
+            adv = bc_eval_results[t+1]['adv']
+    
+        replay_buffer.replace_weights(adv, args.weight_func, args.exp_lambd, args.scale)
 
     # Initialize policy
     policy = TD3_BC.TD3_BC(**kwargs)

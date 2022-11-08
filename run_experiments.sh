@@ -17,59 +17,38 @@ envs=(
 	)
 
 
+# for ((i=1;i<6;i+=1)); do 
+# 	for env in ${envs[*]}; do
+# 		PRIORITY=$prio NS=$ns make run cmd="python main.py --env $env --seed $i \
+# 			--critic_type doublev  --bc_eval_steps 1000000 --td_type nstep --adv_type gae --n_step 3 --lambd 0.95 \
+# 			--resample --tag bc_adv_reweight_v1"
+# 	    sleep 5;
+
+# 	done
+# done
+
 for ((i=1;i<6;i+=1)); do 
 	for env in ${envs[*]}; do
 		PRIORITY=$prio NS=$ns make run cmd="python main.py --env $env --seed $i \
-			--critic_type doublev  --bc_eval_steps 1000000 --td_type nstep --adv_type gae --n_step 3 --lambd 0.95 \
-			--reweight --tag bc_adv_reweight_v1"
+			--critic_type doublev  --bc_eval_steps 1000000 --td_type nstep --adv_type nstep --n_step 1 \
+			--resample --tag bc_adv_resample-v1"
 	    sleep 5;
 
 		PRIORITY=$prio NS=$ns make run cmd="python main.py --env $env --seed $i \
-			--critic_type doublev  --bc_eval_steps 1000000 --td_type nstep --adv_type gae --n_step 10 --lambd 0.95 \
-			--reweight --tag bc_adv_reweight_v1"
+			--critic_type doublev  --bc_eval_steps 1000000 --td_type nstep --adv_type nstep --n_step 3 \
+			--resample --tag bc_adv_resample-v1"
 	    sleep 5;
 
 		PRIORITY=$prio NS=$ns make run cmd="python main.py --env $env --seed $i \
-			--critic_type doublev  --bc_eval_steps 1000000 --td_type nstep --adv_type gae --n_step 1 --lambd 0.95 \
-			--weight_func exp  --exp_lambd 0.1 \
-			--reweight --tag bc_adv_reweight_v1"
+			--critic_type doublev  --bc_eval_steps 1000000 --td_type nstep --adv_type nstep --n_step 10 \
+			--resample --tag bc_adv_resample-v1"
 	    sleep 5;
-
-		PRIORITY=$prio NS=$ns make run cmd="python main.py --env $env --seed $i \
-			--critic_type doublev  --bc_eval_steps 1000000 --td_type nstep --adv_type gae --n_step 1 --lambd 0.95 \
-			--weight_func exp  --exp_lambd 0.3 \
-			--reweight --tag bc_adv_reweight_v1"
-	    sleep 5;
-
-		PRIORITY=$prio NS=$ns make run cmd="python main.py --env $env --seed $i \
-			--critic_type doublev  --bc_eval_steps 1000000 --td_type nstep --adv_type gae --n_step 1 --lambd 0.95 \
-			--weight_func exp  --exp_lambd 0.5 \
-			--reweight --tag bc_adv_reweight_v1"
-	    sleep 5;
-
-		PRIORITY=$prio NS=$ns make run cmd="python main.py --env $env --seed $i \
-			--critic_type doublev  --bc_eval_steps 1000000 --td_type nstep --adv_type gae --n_step 1 --lambd 0.95 \
-			--weight_func exp  --exp_lambd 1.0 \
-			--reweight --tag bc_adv_reweight_v1"
-	    sleep 5;
-
-		PRIORITY=$prio NS=$ns make run cmd="python main.py --env $env --seed $i \
-			--critic_type doublev  --bc_eval_steps 1000000 --td_type nstep --adv_type gae --n_step 1 --lambd 0.95 \
-			--weight_func exp  --exp_lambd 2.0 \
-			--reweight --tag bc_adv_reweight_v1"
-	    sleep 5;
-
-		PRIORITY=$prio NS=$ns make run cmd="python main.py --env $env --seed $i \
-			--critic_type doublev  --bc_eval_steps 1000000 --td_type nstep --adv_type gae --n_step 1 --lambd 0.95 \
-			--weight_func exp  --exp_lambd 5.0 \
-			--reweight --tag bc_adv_reweight_v1"
-	    sleep 5;
-
-
-
-
 	done
 done
+
+
+
+
 
 
 # for ((i=0;i<1;i+=1)) ; do 
