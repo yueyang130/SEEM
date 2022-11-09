@@ -22,14 +22,14 @@ if __name__ == "__main__":
     parser.add_argument("--bc_eval_steps", type=int, default=4e5, help='number of steps to eval a bc')       
     parser.add_argument("--critic_type", type=str, default='doublev', choices=['v', 'vq', 'doublev'])   
     parser.add_argument("--td_type", type=str, default='nstep', choices=['nstep', 'mc']) 
-    parser.add_argument("--adv_type", type=str, default='gae', choices=['nstep', 'mc', 'gae']) 
+    parser.add_argument("--adv_type", type=str, default='nstep', choices=['nstep', 'mc', 'gae']) 
     parser.add_argument("--n_step", type=int, default=1, help='n-step return') 
     parser.add_argument("--lambd", type=float, default=0.95, help='gae lambda') 
     parser.add_argument("--bc_lr_schedule", type=str, default='cosine', choices=['cosine', 'linear', 'none']) 
     parser.add_argument("--weight_freq", default=5e4, type=int)    
     parser.add_argument("--weight_func", default='linear', choices=['linear', 'exp', 'power'])    
     parser.add_argument("--exp_lambd", default=1.0, type=float)    
-    parser.add_argument("--std", default=1.0, type=float, help="scale weights' standard deviation.")    
+    parser.add_argument("--std", default=2.0, type=float, help="scale weights' standard deviation.")    
     parser.add_argument("--eps", default=0.0, type=float, help="")    
     # TD3
     parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic

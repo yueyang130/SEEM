@@ -48,20 +48,15 @@ if __name__ == "__main__":
     parser.add_argument("--max_timesteps", default=1e6, type=int)   # Max time steps to run environment
     parser.add_argument("--save_model", action="store_true")        # Save model and optimizer parameters
     parser.add_argument("--load_model", default="")                 # Model load file name, "" doesn't load, "default" uses file_name
-    # generate weight
-    parser.add_argument("--bc_eval", type=int, default=1)       
-    parser.add_argument("--bc_eval_steps", type=int, default=1e6)       
-    parser.add_argument("--critic_type", type=str, default='doublev', choices=['v', 'vq', 'doublev'])   
-    parser.add_argument("--td_type", type=str, default='nstep', choices=['nstep', 'mc']) 
-    parser.add_argument("--adv_type", type=str, default='gae', choices=['nstep', 'mc', 'gae']) 
-    parser.add_argument("--n_step", type=int, default=1, help='n-step return') 
-    parser.add_argument("--lambd", type=float, default=0.95, help='gae lambda') 
-    parser.add_argument("--bc_lr_schedule", type=str, default='cosine', choices=['cosine', 'linear', 'none']) 
-    parser.add_argument("--weight_freq", default=5e4, type=int)    
+    # load weight
+    parser.add_argument("--bc_eval", type=int, default=1)   
+    parser.add_argument("--weight_num", type=int, default=2, help='how many weights to compute avg')       
+    parser.add_argument("--weight_path", type=str, help='bc adv path')       
+    parser.add_argument("--iter", type=int, default=5, help='K th rebalanced behavior policy.')       
     parser.add_argument("--weight_func", default='linear', choices=['linear', 'exp', 'power'])    
     parser.add_argument("--exp_lambd", default=1.0, type=float)    
-    parser.add_argument("--std", default=1.0, type=float, help="scale weights' standard deviation.")    
-    parser.add_argument("--eps", default=0.0, type=float, help="")    
+    parser.add_argument("--std", default=2.0, type=float, help="scale weights' standard deviation.")    
+    parser.add_argument("--eps", default=0.1, type=float, help="")    
     # TD3
     parser.add_argument("--expl_noise", default=0.1)                # Std of Gaussian exploration noise
     parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic
@@ -87,7 +82,6 @@ if __name__ == "__main__":
     # resample and reweight can not been applied together
     assert not args.resample or not args.reweight
 
-    file_name = f"{args.critic_type}_{args.td_type}_{args.adv_type}_{args.n_step}_{args.lambd}_{args.bc_lr_schedule}_{args.env}_{args.seed}"
     print("---------------------------------------")
     print(f"Policy: {args.policy}, Env: {args.env}, Seed: {args.seed}")
     print("---------------------------------------")
@@ -111,14 +105,6 @@ if __name__ == "__main__":
     action_dim = env.action_space.shape[0] 
     max_action = float(env.action_space.high[0])
 
-    adv_kawargs = {
-        "critic_type": args.critic_type,
-        "td_type": args.td_type,
-        "adv_type": args.adv_type,
-        "n_step": args.n_step,
-        "lambd": args.lambd,
-    }
-
     kwargs = {
         "state_dim": state_dim,
         "action_dim": action_dim,
@@ -127,13 +113,10 @@ if __name__ == "__main__":
         "tau": args.tau,
         # generate weight
         "bc_eval": args.bc_eval,
-        "bc_eval_steps": args.bc_eval_steps,
-        "bc_lr_schedule": args.bc_lr_schedule,
         "weight_func": args.weight_func,
         "exp_lambd": args.exp_lambd,
         "std": args.std,
         "eps": args.eps,
-        **adv_kawargs,
         # TD3
         "policy_noise": args.policy_noise * max_action,
         "noise_clip": args.noise_clip * max_action,
@@ -153,7 +136,7 @@ if __name__ == "__main__":
             })
 
     replay_buffer = utils.ReplayBuffer(state_dim, action_dim, args.batch_size,
-        base_prob=args.base_prob, resample=args.resample, reweight=args.reweight, n_step=args.n_step, discount=args.discount)
+        base_prob=args.base_prob, resample=args.resample, reweight=args.reweight, discount=args.discount)
     replay_buffer.convert_D4RL(d4rl.qlearning_dataset(env))
     # save return dist
     np.save(f'./weights/{args.env}_returns.npy', replay_buffer.returns)
@@ -166,46 +149,18 @@ if __name__ == "__main__":
         mean,std = 0,1
 
     if args.bc_eval:
-        # TODO: rewrite weight loading module (filename changed)
-        wp = f'./weights/{file_name}.npy'
-        if os.path.exists(wp): # if weights of current seed exists, then collect weights of all seeds and compute the average. Otherwise, eval bc's adv.
-            adv_list = []
-            for seed in range(1,6):
-                wp = list(wp)
-                wp[-5] = str(seed)
-                wp = ''.join(wp)
-                eval_res = np.load(wp, allow_pickle=True).item()
-                itr = max(eval_res.keys())
-                adv_list.append(eval_res[itr]['adv'])
-                print(f'Loading weights from {wp}')
-            adv = np.stack(adv_list, axis=0).mean(axis=0)
-        else:
-            if args.critic_type == 'v':
-                bc_advantage = V_Advantage(state_dim, action_dim, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau, **adv_kawargs)
-            if args.critic_type == 'doublev':
-                bc_advantage = DoubleV_Advantage(state_dim, action_dim, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau, **adv_kawargs)
-            elif args.critic_type == 'vq':
-                bc_advantage = VQ_Advantage(state_dim, action_dim, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau, **adv_kawargs)
-            else:
-                raise NotImplementedError
-            bc_advantage.set_replay_buffer(replay_buffer)
-
-            bc_eval_results = {}
-            for t in range(int(args.bc_eval_steps)):
-                infos = bc_advantage.train(replay_buffer)
-                if (t + 1) % args.log_freq == 0:
-                    for k, v in infos.items():
-                        wandb.log({f'bc/train/{k}': v}, step=t+1)
-                if (t + 1) % args.weight_freq == 0:
-                    adv, q, v = bc_advantage.eval()
-                    bc_eval_results[t+1] = {'adv': adv, 'q': q, 'v': v}
-                    wandb.log({f'bc/eval/q': q.mean()}, step=t+1)
-                    wandb.log({f'bc/eval/v': v.mean()}, step=t+1)
-                    wandb.log({f'bc/eval/abs_adv': np.abs(adv).mean()}, step=t+1)
-                    wandb.log({f'bc/eval/positive_adv': (adv-adv.min()).mean()}, step=t+1)
-            np.save(wp, bc_eval_results)
-            adv = bc_eval_results[t+1]['adv']
-    
+        # weight loading module (filename changed)
+        adv_list = []
+        for seed in range(1, args.weight_num + 1):
+            file_name = args.weight_path%seed
+            wp =  f'./weights/{file_name}.npy'
+            eval_res = np.load(wp, allow_pickle=True).item()
+            num_iter, bc_eval_steps = eval_res['iter'], eval_res['eval_steps']
+            assert args.iter <= num_iter
+            step = args.iter*bc_eval_steps
+            adv_list.append(eval_res[step]['adv'])
+            print(f'Loading weights from {wp} at step {step}')
+        adv = np.stack(adv_list, axis=0).mean(axis=0)
         replay_buffer.replace_weights(adv, args.weight_func, args.exp_lambd, args.std, args.eps)
 
     # Initialize policy
@@ -217,7 +172,7 @@ if __name__ == "__main__":
 
     # time0 = time.time()
     evaluations = []
-    for t in range(int(args.bc_eval_steps), int(args.bc_eval_steps + args.max_timesteps)):
+    for t in range(int(args.max_timesteps)):
         infos = policy.train(replay_buffer)
         if (t + 1) % args.log_freq == 0:
             for k, v in infos.items():
