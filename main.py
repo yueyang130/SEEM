@@ -166,6 +166,7 @@ if __name__ == "__main__":
         mean,std = 0,1
 
     if args.bc_eval:
+        # TODO: rewrite weight loading module (filename changed)
         wp = f'./weights/{file_name}.npy'
         if os.path.exists(wp): # if weights of current seed exists, then collect weights of all seeds and compute the average. Otherwise, eval bc's adv.
             adv_list = []

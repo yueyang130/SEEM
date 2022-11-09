@@ -77,8 +77,8 @@ class ReplayBuffer(object):
         )
 
     def bc_eval_sample(self):
-        # uniform sample
-        ind = np.random.randint(self.size, size=self.batch_size)
+        # sample by the distribution of rebalanced behavior policy
+        ind = self.bc_sampler.sample()
         return self.sample_by_ind(ind)
 
     def sample_n_step_by_ind(self, ind):
@@ -91,8 +91,7 @@ class ReplayBuffer(object):
         )
 
     def bc_eval_sample_n(self):
-        # uniform sample
-        ind = np.random.randint(self.size, size=self.batch_size)
+        ind = self.bc_sampler.sample()
         return self.sample_n_step_by_ind(ind)
 
 
@@ -149,6 +148,8 @@ class ReplayBuffer(object):
             self.sampler = PrefetchBalancedSampler(self.probs, self.size, self.batch_size, n_prefetch=1000)
         else:
             self.sampler = RandSampler(self.size, self.batch_size)
+        # At the first behavior policy iteration, uniform sample
+        self.bc_sampler = RandSampler(self.size, self.batch_size)
 
         # n-step bootstrap for bc eval
         if self.n_step == 1: return
@@ -207,3 +208,7 @@ class ReplayBuffer(object):
             self.weights = prob * self.size
         if self.resample:
             self.sampler.replace_prob(self.probs)
+
+    def reset_bc(self, weight):
+        # At the first behavior policy iteration, uniform sample
+        self.bc_sampler = PrefetchBalancedSampler(weight, self.size, self.batch_size, n_prefetch=1000)
