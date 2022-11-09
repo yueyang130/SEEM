@@ -58,9 +58,10 @@ if __name__ == "__main__":
     parser.add_argument("--lambd", type=float, default=0.95, help='gae lambda') 
     parser.add_argument("--bc_lr_schedule", type=str, default='cosine', choices=['cosine', 'linear', 'none']) 
     parser.add_argument("--weight_freq", default=5e4, type=int)    
-    parser.add_argument("--weight_func", default='linear', choices=['linear', 'exp'])    
+    parser.add_argument("--weight_func", default='linear', choices=['linear', 'exp', 'power'])    
     parser.add_argument("--exp_lambd", default=1.0, type=float)    
-    parser.add_argument("--scale", default=10.0, type=float, help="scale weights' standard deviation. Set zero means auto-scale")    
+    parser.add_argument("--std", default=1.0, type=float, help="scale weights' standard deviation.")    
+    parser.add_argument("--eps", default=0.0, type=float, help="")    
     # TD3
     parser.add_argument("--expl_noise", default=0.1)                # Std of Gaussian exploration noise
     parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic
@@ -130,7 +131,8 @@ if __name__ == "__main__":
         "bc_lr_schedule": args.bc_lr_schedule,
         "weight_func": args.weight_func,
         "exp_lambd": args.exp_lambd,
-        "scale": args.scale,
+        "std": args.std,
+        "eps": args.eps,
         **adv_kawargs,
         # TD3
         "policy_noise": args.policy_noise * max_action,
@@ -165,11 +167,17 @@ if __name__ == "__main__":
 
     if args.bc_eval:
         wp = f'./weights/{file_name}.npy'
-        if os.path.exists(wp):
-            eval_res = np.load(wp, allow_pickle=True).item()
-            itr = max(eval_res.keys())
-            adv = eval_res[itr]['adv']
-            print(f'Loading weights from {wp}')
+        if os.path.exists(wp): # if weights of current seed exists, then collect weights of all seeds and compute the average. Otherwise, eval bc's adv.
+            adv_list = []
+            for seed in range(1,6):
+                wp = list(wp)
+                wp[-5] = str(seed)
+                wp = ''.join(wp)
+                eval_res = np.load(wp, allow_pickle=True).item()
+                itr = max(eval_res.keys())
+                adv_list.append(eval_res[itr]['adv'])
+                print(f'Loading weights from {wp}')
+            adv = np.stack(adv_list, axis=0).mean(axis=0)
         else:
             if args.critic_type == 'v':
                 bc_advantage = V_Advantage(state_dim, action_dim, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau, **adv_kawargs)
@@ -197,7 +205,7 @@ if __name__ == "__main__":
             np.save(wp, bc_eval_results)
             adv = bc_eval_results[t+1]['adv']
     
-        replay_buffer.replace_weights(adv, args.weight_func, args.exp_lambd, args.scale)
+        replay_buffer.replace_weights(adv, args.weight_func, args.exp_lambd, args.std, args.eps)
 
     # Initialize policy
     policy = TD3_BC.TD3_BC(**kwargs)

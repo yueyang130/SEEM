@@ -2,7 +2,7 @@
 
 # Script to reproduce results
 ns=offbench
-prio=low
+prio=high
 
 envs=( 
 	# "halfcheetah-medium-v2" 
@@ -27,24 +27,30 @@ envs=(
 # 	done
 # done
 
-for ((i=1;i<6;i+=1)); do 
+for ((i=1;i<5;i+=1)); do 
 	for env in ${envs[*]}; do
+
 		PRIORITY=$prio NS=$ns make run cmd="python main.py --env $env --seed $i \
 			--critic_type doublev  --bc_eval_steps 1000000 --td_type nstep --adv_type nstep --n_step 1 \
-			--resample --tag bc_adv_resample-v1"
+			--std 2.0 --eps 0.1 --resample \
+			--max_timesteps 0 --tag bc_eval_one_step"
 	    sleep 5;
 
-		PRIORITY=$prio NS=$ns make run cmd="python main.py --env $env --seed $i \
-			--critic_type doublev  --bc_eval_steps 1000000 --td_type nstep --adv_type nstep --n_step 3 \
-			--resample --tag bc_adv_resample-v1"
-	    sleep 5;
-
-		PRIORITY=$prio NS=$ns make run cmd="python main.py --env $env --seed $i \
-			--critic_type doublev  --bc_eval_steps 1000000 --td_type nstep --adv_type nstep --n_step 10 \
-			--resample --tag bc_adv_resample-v1"
-	    sleep 5;
 	done
 done
+
+# for ((i=1;i<5;i+=1)); do 
+# 	for env in ${envs[*]}; do
+
+# 		PRIORITY=$prio NS=$ns make run cmd="python main.py --env $env --seed $i \
+# 			--critic_type doublev  --bc_eval_steps 1000000 --td_type nstep --adv_type nstep --n_step 1 \
+# 			--std 2.0 --eps 0.1 --resample \
+# 			--tag bc_adv_resample_v1"
+# 	    sleep 5;
+
+# 	done
+# done
+
 
 
 
@@ -74,6 +80,3 @@ done
 
 
 
-
-# PRIORITY=low NS=offrl make run cmd="python main.py --env hopper-random-v2 --seed 0"
-# PRIORITY=low NS=offrl make run cmd="python main.py --env antmaze-umaze-v0 --eval_episodes=100 --eval_freq=100000 --seed 0"
