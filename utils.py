@@ -209,6 +209,10 @@ class ReplayBuffer(object):
         if self.resample:
             self.sampler.replace_prob(self.probs)
 
-    def reset_bc(self, weight):
+    def reset_bc(self, weight, scale=False, std=1.0, eps=0.0):
+        assert np.abs(weight.mean() - 1) < 0.001
+        if scale:
+            scale = std / weight.std()
+            weight = np.maximum(scale*(weight - 1) + 1, eps)
         # At the first behavior policy iteration, uniform sample
         self.bc_sampler = PrefetchBalancedSampler(weight, self.size, self.batch_size, n_prefetch=1000)

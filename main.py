@@ -112,6 +112,7 @@ if __name__ == "__main__":
         "discount": args.discount,
         "tau": args.tau,
         # generate weight
+        "iter": args.iter,
         "bc_eval": args.bc_eval,
         "weight_func": args.weight_func,
         "exp_lambd": args.exp_lambd,

@@ -19,6 +19,7 @@ if __name__ == "__main__":
     parser.add_argument("--log_freq", default=1e3, type=int)       # How often (time steps) we evaluate
     # generate weight
     parser.add_argument("--iter", type=int, default=5, help='how many times to iteratively rebalance')       
+    parser.add_argument("--scale", type=bool, default=False, help='If true, scale weights for larger standard deviation')       
     parser.add_argument("--bc_eval_steps", type=int, default=4e5, help='number of steps to eval a bc')       
     parser.add_argument("--critic_type", type=str, default='doublev', choices=['v', 'vq', 'doublev'])   
     parser.add_argument("--td_type", type=str, default='nstep', choices=['nstep', 'mc']) 
@@ -30,7 +31,7 @@ if __name__ == "__main__":
     parser.add_argument("--weight_func", default='linear', choices=['linear', 'exp', 'power'])    
     parser.add_argument("--exp_lambd", default=1.0, type=float)    
     parser.add_argument("--std", default=2.0, type=float, help="scale weights' standard deviation.")    
-    parser.add_argument("--eps", default=0.0, type=float, help="")    
+    parser.add_argument("--eps", default=0.1, type=float, help="")    
     # TD3
     parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic
     parser.add_argument("--discount", default=0.99)                 # Discount factor
@@ -74,6 +75,7 @@ if __name__ == "__main__":
         # generate weight
         "bc_eval_steps": args.bc_eval_steps,
         "iter": args.iter,
+        "scale": args.scale,
         "bc_lr_schedule": args.bc_lr_schedule,
         "weight_func": args.weight_func,
         "exp_lambd": args.exp_lambd,
@@ -131,7 +133,7 @@ if __name__ == "__main__":
             # reset optimizer and lr schedule
             bc_advantage.reset_optimizer()
             # reset behavior policy, i.e., resampling
-            replay_buffer.reset_bc(weight)
+            replay_buffer.reset_bc(weight, args.scale, args.std, args.eps)
             
 
     np.save(wp, bc_eval_results)
