@@ -19,8 +19,9 @@ if __name__ == "__main__":
     parser.add_argument("--log_freq", default=1e3, type=int)       # How often (time steps) we evaluate
     # generate weight
     parser.add_argument("--iter", type=int, default=5, help='how many times to iteratively rebalance')       
-    parser.add_argument("--scale", type=bool, default=False, help='If true, scale weights for larger standard deviation')       
-    parser.add_argument("--bc_eval_steps", type=int, default=4e5, help='number of steps to eval a bc')       
+    parser.add_argument("--scale", action='store_true', help='If true, scale weights for larger standard deviation')       
+    parser.add_argument("--first_eval_steps", type=int, default=4e5, help='the first number of steps to eval a bc')       
+    parser.add_argument("--bc_eval_steps", type=int, default=2e5, help='number of steps to eval a bc')       
     parser.add_argument("--critic_type", type=str, default='doublev', choices=['v', 'vq', 'doublev'])   
     parser.add_argument("--td_type", type=str, default='nstep', choices=['nstep', 'mc']) 
     parser.add_argument("--adv_type", type=str, default='nstep', choices=['nstep', 'mc', 'gae']) 
@@ -41,7 +42,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
 
-    file_name = f"{args.critic_type}_{args.td_type}_{args.adv_type}_{args.n_step}_{args.lambd}_{args.bc_lr_schedule}_{args.iter}_{args.bc_eval_steps}_{args.env}_{args.seed}"
+    # file_name = f"{args.critic_type}_{args.td_type}_{args.adv_type}_{args.n_step}_{args.lambd}_{args.bc_lr_schedule}_{args.iter}_{args.bc_eval_steps}_scale={args.scale}_{args.env}_{args.seed}"
+    file_name = f"{args.first_eval_steps}_{args.iter}_{args.bc_eval_steps}_scale={args.scale}_{args.env}_{args.seed}"
     print("---------------------------------------")
     print(f"Policy: {args.policy}, Env: {args.env}, Seed: {args.seed}")
     print("---------------------------------------")
@@ -73,6 +75,7 @@ if __name__ == "__main__":
         "discount": args.discount,
         "tau": args.tau,
         # generate weight
+        "first_eval_steps": args.first_eval_steps,
         "bc_eval_steps": args.bc_eval_steps,
         "iter": args.iter,
         "scale": args.scale,
@@ -104,17 +107,18 @@ if __name__ == "__main__":
     wp = f'./weights/{file_name}.npy'
     
     if args.critic_type == 'v':
-        bc_advantage = V_Advantage(state_dim, action_dim, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau, **adv_kawargs)
+        bc_advantage = V_Advantage(state_dim, action_dim, args.bc_lr_schedule, args.first_eval_steps, args.discount, args.tau, **adv_kawargs)
     if args.critic_type == 'doublev':
-        bc_advantage = DoubleV_Advantage(state_dim, action_dim, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau, **adv_kawargs)
+        bc_advantage = DoubleV_Advantage(state_dim, action_dim, args.bc_lr_schedule, args.first_eval_steps, args.discount, args.tau, **adv_kawargs)
     elif args.critic_type == 'vq':
-        bc_advantage = VQ_Advantage(state_dim, action_dim, args.bc_lr_schedule, args.bc_eval_steps, args.discount, args.tau, **adv_kawargs)
+        bc_advantage = VQ_Advantage(state_dim, action_dim, args.bc_lr_schedule, args.first_eval_steps, args.discount, args.tau, **adv_kawargs)
     else:
         raise NotImplementedError
     bc_advantage.set_replay_buffer(replay_buffer)
 
-    bc_eval_results = {'iter': args.iter, 'eval_steps': args.bc_eval_steps}
-    for t in range(int(args.bc_eval_steps)*args.iter):
+    bc_eval_results = {'iter': args.iter, 'first_eval_steps': args.first_eval_steps, 'eval_steps': args.bc_eval_steps}
+    weight = np.ones((replay_buffer.size, 1), dtype=np.float32)
+    for t in range(int(args.bc_eval_steps*(args.iter-1) + args.first_eval_steps)):
         infos = bc_advantage.train(replay_buffer)
         if (t + 1) % args.log_freq == 0:
             for k, v in infos.items():
@@ -122,19 +126,33 @@ if __name__ == "__main__":
         if (t + 1) % args.weight_freq == 0:
             adv, q, v = bc_advantage.eval()
             padv = adv-adv.min()
-            weight = padv / padv.sum() * replay_buffer.size
-            bc_eval_results[t+1] = {'adv': adv, 'q': q, 'v': v}
+            
             wandb.log({f'bc/eval/q': q.mean()}, step=t+1)
             wandb.log({f'bc/eval/v': v.mean()}, step=t+1)
             wandb.log({f'bc/eval/abs_adv': np.abs(adv).mean()}, step=t+1)
             wandb.log({f'bc/eval/positive_adv': padv.mean()}, step=t+1)
-            wandb.log({f'bc/eval/weight_std': weight.std()}, step=t+1)
-        if (t + 1) % args.bc_eval_steps == 0: 
+        if (t + 1 - args.first_eval_steps) >= 0 and (t + 1 - args.first_eval_steps) % args.bc_eval_steps == 0: 
+            curr_itr = int((t + 1 - args.first_eval_steps) / args.bc_eval_steps + 1)
             # reset optimizer and lr schedule
-            bc_advantage.reset_optimizer()
+            bc_advantage.reset_optimizer(args.bc_eval_steps)
             # reset behavior policy, i.e., resampling
-            replay_buffer.reset_bc(weight, args.scale, args.std, args.eps)
-            
+            current_weight = padv / padv.sum() * replay_buffer.size
+            # Note: var1 += var2 is not the same as var1 = var1 + var2 with collections.
+            # see https://stackoverflow.com/questions/35910577/why-does-python-numpys-mutate-the-original-array
+            # weight *= current_weight
+            weight = weight * current_weight
+            weight = weight / weight.sum() * replay_buffer.size
+            wandb.log({f'bc/eval/weight_std': weight.std()}, step=t+1)
+            if args.scale:
+                scale = args.std / weight.std()
+                if scale > 1:
+                    weight = np.maximum(scale*(weight - 1) + 1, args.eps)
+                    weight = weight / weight.sum() * replay_buffer.size
+                    wandb.log({f'bc/eval/scaled_weight_std': weight.std()}, step=t+1)
+
+            replay_buffer.reset_bc(weight)
+            bc_eval_results[curr_itr] = weight
+
 
     np.save(wp, bc_eval_results)
     print(f'saved at {file_name}')

@@ -187,19 +187,19 @@ class ReplayBuffer(object):
             self.state_n = (self.state_n - mean)/std
         return mean, std
 
-    def replace_weights(self, adv, weight_func, exp_lambd=1.0, std=1.0, eps=0.0):
+    def replace_weights(self, weight, weight_func, exp_lambd=1.0, std=1.0, eps=0.0):
         #? need set adv_prob_base?
         if weight_func == 'linear':
-            positive_adv = adv - adv.min()
-            prob = positive_adv / positive_adv.sum()
+            weight = weight - weight.min()
+            prob = weight / weight.sum()
             # keep mean, scale std
             scale = std / (prob.std() * self.size)
             prob = np.maximum(scale*(prob - 1/self.size) + 1/self.size, eps/self.size)
             prob = prob/prob.sum() # norm to 1 again
         elif weight_func == 'exp':
-            adv = adv / np.abs(adv).mean()
-            positive_adv = np.exp(exp_lambd * adv)
-            prob = positive_adv / positive_adv.sum()
+            weight = weight / np.abs(weight).mean()
+            weight = np.exp(exp_lambd * weight)
+            prob = weight / weight.sum()
         self.probs = prob
 
         if self.reweight:
@@ -209,10 +209,6 @@ class ReplayBuffer(object):
         if self.resample:
             self.sampler.replace_prob(self.probs)
 
-    def reset_bc(self, weight, scale=False, std=1.0, eps=0.0):
-        assert np.abs(weight.mean() - 1) < 0.001
-        if scale:
-            scale = std / weight.std()
-            weight = np.maximum(scale*(weight - 1) + 1, eps)
+    def reset_bc(self, weight):
         # At the first behavior policy iteration, uniform sample
         self.bc_sampler = PrefetchBalancedSampler(weight, self.size, self.batch_size, n_prefetch=1000)

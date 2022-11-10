@@ -165,9 +165,9 @@ class V_Advantage(Advantage):
 		self.bc_lr_schedule = bc_lr_schedule
 		self.maxstep = maxstep
 
-	def reset_optimizer(self):
+	def reset_optimizer(self, maxstep):
 		self.value_optimizer = torch.optim.Adam(self.value.parameters(), lr=3e-4)
-		self.value_lr_scheduler = get_scheduler(self.value_optimizer, self.bc_lr_schedule, self.maxstep)
+		self.value_lr_scheduler = get_scheduler(self.value_optimizer, self.bc_lr_schedule, maxstep)
 	
 	def train(self, replay_buffer):
 		self.total_it += 1

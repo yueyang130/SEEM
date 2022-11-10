@@ -151,18 +151,17 @@ if __name__ == "__main__":
 
     if args.bc_eval:
         # weight loading module (filename changed)
-        adv_list = []
+        weight_list = []
         for seed in range(1, args.weight_num + 1):
             file_name = args.weight_path%seed
             wp =  f'./weights/{file_name}.npy'
             eval_res = np.load(wp, allow_pickle=True).item()
             num_iter, bc_eval_steps = eval_res['iter'], eval_res['eval_steps']
             assert args.iter <= num_iter
-            step = args.iter*bc_eval_steps
-            adv_list.append(eval_res[step]['adv'])
-            print(f'Loading weights from {wp} at step {step}')
-        adv = np.stack(adv_list, axis=0).mean(axis=0)
-        replay_buffer.replace_weights(adv, args.weight_func, args.exp_lambd, args.std, args.eps)
+            weight_list.append(eval_res[args.iter])
+            print(f'Loading weights from {wp} at {args.iter}th rebalanced behavior policy')
+        weight = np.stack(weight_list, axis=0).mean(axis=0)
+        replay_buffer.replace_weights(weight, args.weight_func, args.exp_lambd, args.std, args.eps)
 
     # Initialize policy
     policy = TD3_BC.TD3_BC(**kwargs)
