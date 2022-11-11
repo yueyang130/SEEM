@@ -33,7 +33,10 @@ def eval_policy(policy, env_name, seed, mean, std, seed_offset=100, eval_episode
     print("---------------------------------------")
     return d4rl_score
 
-
+def none_or_float(value):
+    if value == 'None' or value == 'none':
+        return None
+    return float(value)
 
 if __name__ == "__main__":
     
@@ -55,8 +58,9 @@ if __name__ == "__main__":
     parser.add_argument("--iter", type=int, default=5, help='K th rebalanced behavior policy.')       
     parser.add_argument("--weight_func", default='linear', choices=['linear', 'exp', 'power'])    
     parser.add_argument("--exp_lambd", default=1.0, type=float)    
-    parser.add_argument("--std", default=2.0, type=float, help="scale weights' standard deviation.")    
-    parser.add_argument("--eps", default=0.1, type=float, help="")    
+    parser.add_argument("--std", default=2.0, type=none_or_float, help="scale weights' standard deviation.")    
+    parser.add_argument("--eps", default=0.1, type=none_or_float, help="")    
+    parser.add_argument("--eps_max", default=None, type=none_or_float, help="")    
     # TD3
     parser.add_argument("--expl_noise", default=0.1)                # Std of Gaussian exploration noise
     parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic
@@ -118,6 +122,7 @@ if __name__ == "__main__":
         "exp_lambd": args.exp_lambd,
         "std": args.std,
         "eps": args.eps,
+        "eps_max": args.eps_max,
         # TD3
         "policy_noise": args.policy_noise * max_action,
         "noise_clip": args.noise_clip * max_action,
@@ -153,7 +158,10 @@ if __name__ == "__main__":
         # weight loading module (filename changed)
         weight_list = []
         for seed in range(1, args.weight_num + 1):
-            file_name = args.weight_path%seed
+            try:
+                file_name = args.weight_path%seed
+            except:
+                file_name = args.weight_path # load the speificed weight
             wp =  f'./weights/{file_name}.npy'
             eval_res = np.load(wp, allow_pickle=True).item()
             num_iter, bc_eval_steps = eval_res['iter'], eval_res['eval_steps']
@@ -161,7 +169,7 @@ if __name__ == "__main__":
             weight_list.append(eval_res[args.iter])
             print(f'Loading weights from {wp} at {args.iter}th rebalanced behavior policy')
         weight = np.stack(weight_list, axis=0).mean(axis=0)
-        replay_buffer.replace_weights(weight, args.weight_func, args.exp_lambd, args.std, args.eps)
+        replay_buffer.replace_weights(weight, args.weight_func, args.exp_lambd, args.std, args.eps, args.eps_max)
 
     # Initialize policy
     policy = TD3_BC.TD3_BC(**kwargs)

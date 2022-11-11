@@ -187,14 +187,19 @@ class ReplayBuffer(object):
             self.state_n = (self.state_n - mean)/std
         return mean, std
 
-    def replace_weights(self, weight, weight_func, exp_lambd=1.0, std=1.0, eps=0.0):
+    def replace_weights(self, weight, weight_func, exp_lambd=1.0, std=1.0, eps=0.0, eps_max=None):
         #? need set adv_prob_base?
         if weight_func == 'linear':
             weight = weight - weight.min()
             prob = weight / weight.sum()
             # keep mean, scale std
-            scale = std / (prob.std() * self.size)
-            prob = np.maximum(scale*(prob - 1/self.size) + 1/self.size, eps/self.size)
+            if std:
+                scale = std / (prob.std() * self.size)
+                prob = scale*(prob - 1/self.size) + 1/self.size
+                if eps: # if scale, the prob may be negative.
+                    prob = np.maximum(prob, eps/self.size)
+                if eps_max: # if scale, the prob may be too large.
+                    prob = np.minimum(prob, eps_max/self.size)
             prob = prob/prob.sum() # norm to 1 again
         elif weight_func == 'exp':
             weight = weight / np.abs(weight).mean()
