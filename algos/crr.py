@@ -36,6 +36,7 @@ class CRR(Algo):
     config.q_weight_method = 'min'
     config.use_expectile = True
     config.exp_tau = 0.7
+    config.adv_norm = False
 
     if updates is not None:
       config.update(ConfigDict(updates).copy_and_resolve_references())
@@ -190,6 +191,8 @@ class CRR(Algo):
           self.config.crr_ratio_upper_bound,
           jnp.exp(adv / self.config.crr_beta)
         )
+        if self.config.adv_norm:
+          coef = jax.nn.softmax(adv / self.config.crr_beta)
       else:
         coef = jnp.heaviside(adv, 0)
 
