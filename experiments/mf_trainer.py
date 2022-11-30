@@ -16,7 +16,6 @@ from algos.model import (
 )
 from core.core_api import Trainer
 from data import Dataset, DM2Gym, RandSampler, RLUPDataset
-from experiments.args import FLAGS_DEF
 from experiments.constants import (
   ALGO,
   ALGO_MAP,
@@ -43,12 +42,12 @@ from viskit.logging import logger, setup_logger
 
 class MFTrainer(Trainer):
 
-  def __init__(self):
+  def __init__(self, flags_def):
     self._cfgs = absl.flags.FLAGS
     self._algo = getattr(algos, self._cfgs.algo)
     self._algo_type = ALGO_MAP[self._cfgs.algo]
 
-    self._variant = get_user_flags(self._cfgs, FLAGS_DEF)
+    self._variant = get_user_flags(self._cfgs, flags_def)
     for k, v in self._cfgs.algo_cfg.items():
       self._variant[f"algo.{k}"] = v
 

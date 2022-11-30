@@ -14,13 +14,14 @@
 import absl.app
 
 from experiments.mf_trainer import MFTrainer
+from experiments.args import FLAGS_DEF
 
 
 def main(argv):
   model_type = absl.flags.FLAGS.type
 
   if model_type == "model-free":
-    mf_trainer = MFTrainer()
+    mf_trainer = MFTrainer(FLAGS_DEF)
     mf_trainer.train()
   else:
     raise NotImplementedError
