@@ -193,21 +193,21 @@ class DiffusionQL(Algo):
       replicated_obs = jnp.broadcast_to(
         observations, (self.config.sample_actions,) + observations.shape
       )
-      replicated_actions = jnp.broadcast_to(
-        actions, (self.config.sample_actions,) + actions.shape
-      )
       if self.config.use_pred_astart:
         pred_astart = self.diffusion.p_mean_variance(
           terms["model_output"], actions, ts
         )["pred_xstart"]
-        vf_actions = self.diffusion.p_mean_variance(
-          replicated_out, replicated_actions, jnp.zeros(
-            (self.config.sample_actions,) + ts.shape, dtype=jnp.int32
-          )
-        )["pred_xstart"]
+        action_dist = distrax.MultivariateNormalDiag(
+          pred_astart, jnp.ones_like(pred_astart)
+        )
+        rng, split_rng = jax.random.split(rng)
+        vf_actions = action_dist.sample(seed=split_rng, sample_shape=self.config.sample_actions)
       else:
         pred_astart = self.policy.apply(
           params['policy'], split_rng, observations
+        )
+        action_dist = distrax.MultivariateNormalDiag(
+          pred_astart, jnp.ones_like(pred_astart)
         )
         rng, split_rng= jax.random.split(rng)
         vf_actions = self.policy.apply(
@@ -236,9 +236,6 @@ class DiffusionQL(Algo):
           jnp.exp(adv / self.config.crr_beta)
         )
         lmbda = jax.lax.stop_gradient(lmbda)
-        action_dist = distrax.MultivariateNormalDiag(
-          pred_astart, jnp.ones_like(pred_astart)
-        )
         log_prob = action_dist.log_prob(actions)
         guide_loss = -jnp.mean(log_prob * lmbda)
       else:
