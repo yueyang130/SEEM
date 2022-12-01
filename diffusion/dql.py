@@ -33,7 +33,7 @@ class DiffusionQL(Algo):
     cfg.schedule_name = 'linear'
     cfg.time_embed_size = 16
     cfg.alpha = 2.  # NOTE 0.25 in diffusion rl but 2.5 in td3
-    cfg.use_pred_astart = False
+    cfg.use_pred_astart = True
     cfg.max_grad_norm = 0.
 
     # learning related

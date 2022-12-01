@@ -2,11 +2,11 @@
 
 TASK="${TASK:-d4rl}" # d4rl / antmaze / rl_unplugged
 PRIORITY="${PRIORITY:-low}"
-ALGO="${ALGO:-MISA}"
+ALGO="${ALGO:-DiffusionQL}"
 RUNS="${RUNS:-1}" # d4rl / antmaze / rl_unplugged
 DBMODE="${DBMODE:-mcmc}"
 N_SAMPLES="${N_SAMPLES:-50}"
-BASE_CMD="python -m experiments.main --logging.output_dir=./experiment_output --logging.online --algo_cfg.n_actions=${N_SAMPLES}"
+BASE_CMD="python -m diffusion.trainer --logging.output_dir=./experiment_output --logging.online --algo_cfg.loss_type=CRR"
 
 for (( i=1; i<=${RUNS}; i++ ))
 do
