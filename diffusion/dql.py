@@ -32,8 +32,8 @@ class DiffusionQL(Algo):
     cfg.num_timesteps = 100
     cfg.schedule_name = 'linear'
     cfg.time_embed_size = 16
-    cfg.alpha = 0.25  # NOTE 0.25 in diffusion rl but 2.5 in td3
-    cfg.use_pred_as_start = False
+    cfg.alpha = 2.  # NOTE 0.25 in diffusion rl but 2.5 in td3
+    cfg.use_pred_astart = False
     cfg.max_grad_norm = 0.
 
     # learning related
@@ -196,7 +196,7 @@ class DiffusionQL(Algo):
       replicated_actions = jnp.broadcast_to(
         actions, (self.config.sample_actions,) + actions.shape
       )
-      if self.config.use_pred_as_start:
+      if self.config.use_pred_astart:
         pred_astart = self.diffusion.p_mean_variance(
           terms["model_output"], actions, ts
         )["pred_xstart"]
