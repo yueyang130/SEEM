@@ -11,6 +11,7 @@ from core.core_api import Algo
 from utilities.jax_utils import mse_loss, next_rng, value_and_multi_grad
 
 from diffusion.diffusion import GaussianDiffusion
+import distrax
 
 
 def update_target_network(main_params, target_params, tau):
@@ -32,7 +33,7 @@ class DiffusionQL(Algo):
     cfg.schedule_name = 'linear'
     cfg.time_embed_size = 16
     cfg.alpha = 0.25  # NOTE 0.25 in diffusion rl but 2.5 in td3
-    cfg.use_pred_astart = False
+    cfg.use_pred_as_start = False
     cfg.max_grad_norm = 0.
 
     # learning related
@@ -40,6 +41,13 @@ class DiffusionQL(Algo):
     cfg.guide_coef = 1.0
     cfg.lr_decay = False
     cfg.lr_decay_steps = 1000000
+
+    cfg.loss_type = 'TD3'
+    cfg.use_expectile = False
+    cfg.exp_tau = 0.7
+    cfg.sample_actions = 20
+    cfg.crr_ratio_upper_bound = 20
+    cfg.crr_beta = 1.0
 
     # useless
     cfg.target_entropy = -1
@@ -147,6 +155,19 @@ class DiffusionQL(Algo):
       # qf loss
       qf1_loss = mse_loss(cur_q1, tgt_q)
       qf2_loss = mse_loss(cur_q2, tgt_q)
+
+      if self.config.use_expectile:
+        diff1 = cur_q1 - tgt_q
+        exp_w1 = jnp.where(
+          diff1 > 0, self.config.exp_tau, 1 - self.config.exp_tau
+        )
+        qf1_loss = (exp_w1 * (diff1 ** 2)).mean()
+        diff2 = cur_q2 - tgt_q
+        exp_w2 = jnp.where(
+          diff2 > 0, self.config.exp_tau, 1 - self.config.exp_tau
+        )
+        qf2_loss = (exp_w2 * (diff2 ** 2)).mean()
+
       qf_loss = qf1_loss + qf2_loss
 
       # diffusion loss
@@ -164,25 +185,66 @@ class DiffusionQL(Algo):
         method=self.policy.loss,
       )
       diff_loss = terms["loss"].mean()
-      if self.config.use_pred_astart:
+
+      rng, split_rng = jax.random.split(rng)
+      replicated_out = jnp.broadcast_to(
+        terms["model_output"], (self.config.sample_actions,) + terms["model_output"].shape
+      )
+      replicated_obs = jnp.broadcast_to(
+        observations, (self.config.sample_actions,) + observations.shape
+      )
+      replicated_actions = jnp.broadcast_to(
+        actions, (self.config.sample_actions,) + actions.shape
+      )
+      if self.config.use_pred_as_start:
         pred_astart = self.diffusion.p_mean_variance(
           terms["model_output"], actions, ts
+        )["pred_xstart"]
+        vf_actions = self.diffusion.p_mean_variance(
+          replicated_out, replicated_actions, jnp.zeros(
+            (self.config.sample_actions,) + ts.shape, dtype=jnp.int32
+          )
         )["pred_xstart"]
       else:
         pred_astart = self.policy.apply(
           params['policy'], split_rng, observations
         )
+        rng, split_rng= jax.random.split(rng)
+        vf_actions = self.policy.apply(
+          params['policy'], split_rng, replicated_obs
+        )
 
-      def fn(key):
-        q = self.qf.apply(params[key], observations, pred_astart)
-        lmbda = self.config.alpha / jax.lax.stop_gradient(jnp.abs(q).mean())
-        policy_loss = -lmbda * q.mean()
-        return lmbda, policy_loss
+      v1 = self.qf.apply(params['qf1'], replicated_obs, vf_actions)
+      v2 = self.qf.apply(params['qf2'], replicated_obs, vf_actions)
+      v = jnp.minimum(v1, v2)
 
-      lmbda, guide_loss = jax.lax.cond(
-        jax.random.uniform(rng) > 0.5, partial(fn, 'qf1'), partial(fn, 'qf2')
-      )
-      policy_loss = diff_loss + self.config.guide_coef * guide_loss
+      if self.config.loss_type == 'TD3':
+        def fn(key):
+          q = self.qf.apply(params[key], observations, pred_astart)
+          lmbda = self.config.alpha / jax.lax.stop_gradient(jnp.abs(q).mean())
+          policy_loss = -lmbda * q.mean()
+          return lmbda, policy_loss
+
+        lmbda, guide_loss = jax.lax.cond(
+          jax.random.uniform(rng) > 0.5, partial(fn, 'qf1'), partial(fn, 'qf2')
+        )
+        policy_loss = diff_loss + self.config.guide_coef * guide_loss
+      elif self.config.loss_type == 'CRR':
+        q_pred = jnp.minimum(cur_q1, cur_q2)
+        adv = q_pred - jnp.mean(v, axis=0)
+        coef = jnp.minimum(
+          self.config.crr_ratio_upper_bound,
+          jnp.exp(adv / self.config.crr_beta)
+        )
+        coef = jax.lax.stop_gradient(coef)
+        action_dist = distrax.MultivariateNormalDiag(
+          pred_astart, jnp.ones_like(pred_astart)
+        )
+        log_prob = action_dist.log_prob(actions)
+        policy_loss = -jnp.mean(log_prob * coef)
+      else:
+        raise NotImplementedError
+
       losses = {'policy': policy_loss, 'qf1': qf1_loss, 'qf2': qf2_loss}
       return tuple(losses[key] for key in self.model_keys), locals()
 
