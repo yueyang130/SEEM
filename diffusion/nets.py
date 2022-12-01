@@ -53,6 +53,7 @@ class PolicyNet(nn.Module):
   arch: Tuple = (256, 256, 256)
   time_embed_size: int = 16
   act: callable = mish
+  use_layer_norm: bool = False
 
   @nn.compact
   def __call__(self, state, action, t):
@@ -61,6 +62,8 @@ class PolicyNet(nn.Module):
 
     for feat in self.arch:
       x = nn.Dense(feat)(x)
+      if self.use_layer_norm:
+        x = nn.LayerNorm()(x)
       x = self.act(x)
 
     x = nn.Dense(self.output_dim)(x)
@@ -74,13 +77,15 @@ class DiffusionPolicy(nn.Module):
   arch: Tuple = (256, 256, 256)
   time_embed_size: int = 16
   act: callable = mish
+  use_layer_norm: bool = False
 
   def setup(self):
     self.base_net = PolicyNet(
       output_dim=self.action_dim,
       arch=self.arch,
       time_embed_size=self.time_embed_size,
-      act=self.act
+      act=self.act,
+      use_layer_norm=self.use_layer_norm,
     )
 
   def __call__(self, rng, observations, deterministic=False, repeat=None):
@@ -127,6 +132,7 @@ class Critic(nn.Module):
   arch: Tuple = (256, 256, 256)
   use_layer_norm: bool = False
   act: callable = mish
+  use_layer_norm: bool = False
 
   @nn.compact
   @multiple_action_q_function
@@ -135,6 +141,8 @@ class Critic(nn.Module):
 
     for feat in self.arch:
       x = nn.Dense(feat)(x)
+      if self.use_layer_norm:
+        x = nn.LayerNorm()(x)
       x = self.act(x)
 
     x = nn.Dense(1)(x)
