@@ -228,23 +228,23 @@ class DiffusionQL(Algo):
         lmbda, guide_loss = jax.lax.cond(
           jax.random.uniform(rng) > 0.5, partial(fn, 'qf1'), partial(fn, 'qf2')
         )
-        policy_loss = diff_loss + self.config.guide_coef * guide_loss
       elif self.config.loss_type == 'CRR':
         q_pred = jnp.minimum(cur_q1, cur_q2)
         adv = q_pred - jnp.mean(v, axis=0)
-        coef = jnp.minimum(
+        lmbda = jnp.minimum(
           self.config.crr_ratio_upper_bound,
           jnp.exp(adv / self.config.crr_beta)
         )
-        coef = jax.lax.stop_gradient(coef)
+        lmbda = jax.lax.stop_gradient(lmbda)
         action_dist = distrax.MultivariateNormalDiag(
           pred_astart, jnp.ones_like(pred_astart)
         )
         log_prob = action_dist.log_prob(actions)
-        policy_loss = -jnp.mean(log_prob * coef)
+        guide_loss = -jnp.mean(log_prob * lmbda)
       else:
         raise NotImplementedError
 
+      policy_loss = diff_loss + self.config.guide_coef * guide_loss
       losses = {'policy': policy_loss, 'qf1': qf1_loss, 'qf2': qf2_loss}
       return tuple(losses[key] for key in self.model_keys), locals()
 
@@ -291,7 +291,7 @@ class DiffusionQL(Algo):
       tgt_q1=aux_values['tgt_q1'].mean(),
       tgt_q2=aux_values['tgt_q2'].mean(),
       tgt_q=aux_values['tgt_q'].mean(),
-      lmbda=aux_values['lmbda'],
+      lmbda=aux_values['lmbda'].mean(),
     )
 
     return train_states, tgt_params, metrics
