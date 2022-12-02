@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  generateName: "offbench-%{ALGO}-%{USER}-job-"
+  generateName: "offbench-%{ALGO}-%{USER_ID}-job-"
   labels:
     estimated-running-time: "2h"
 spec:
@@ -24,8 +24,8 @@ spec:
       #   machine-groups: aiops-mig
 
       containers:
-      - name: "%{USER}-job"
-        image: "192.168.0.92:5000/max/mujoco:latest"
+      - name: "%{USER_ID}-job"
+        image: "%{IMAGE}"
         imagePullPolicy: Always
         volumeMounts:
         # name need to match volume name below
@@ -49,6 +49,8 @@ spec:
           value: %{WB_KEY}
         - name: LD_LIBRARY_PATH
           value: /usr/local/lib/python3.8/dist-packages/cv2/../../lib64:/usr/local/nvidia/lib:/usr/local/nvidia/lib64:/root/.mujoco/mujoco200/bin
+        - name: RELEASE
+          value: "%{RELEASE}"
         resources:
           limits:
             cpu: "%{CPU}"
@@ -58,15 +60,9 @@ spec:
             cpu: "%{CPU}"
             nvidia.com/gpu: "%{GPU}"
             memory: "%{MEM}"
-        lifecycle:
-          # tasks to execute before container exits (e.g. save checkpoints into job folder)
-          preStop:
-            exec:
-              # command:  ["/bin/sh", "-c", "./scripts/pre-stop.sh"]
-              command: ["/bin/sh","-c","echo prestophook triggered > /job-folder/presstophook"]
 
       imagePullSecrets:
-      - name: gitlab-cr-pull-secret
+      - name: %{IPS}
       restartPolicy: Never
       volumes:
       - name: workspace-vol

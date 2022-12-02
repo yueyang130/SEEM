@@ -209,6 +209,7 @@ class DiffusionTrainer(MFTrainer):
       self._observation_dim,
       self._action_dim,
       to_arch(self._cfgs.qf_arch),
+      use_layer_norm=self._cfgs.use_layer_norm
     )
     return qf
 
@@ -228,6 +229,7 @@ class DiffusionTrainer(MFTrainer):
       action_dim=self._action_dim,
       arch=to_arch(self._cfgs.policy_arch),
       time_embed_size=self._cfgs.algo_cfg.time_embed_size,
+      use_layer_norm=self._cfgs.use_layer_norm,
     )
 
     return policy

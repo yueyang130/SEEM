@@ -53,34 +53,22 @@ clean:
 
 commit-checks: format lint check-docstyle
 
-# Build docker images
-docker:
-	./scripts/build_docker.sh ${PROJECT_NAME} interactive
-
-docker-push:
-	./scripts/build_docker.sh ${PROJECT_NAME}
-	./scripts/tag_and_push.sh ${PROJECT_NAME}
-
-k8s:
-	/mnt/home/aiops/tools/make_k8s/build_k8s.sh -p ${PROJECT_NAME}
-
-submit-k8s:
-	./scripts/submit_job.sh
-
 run:
 	./scripts/create_job.sh $(cmd)
 
+launch:
+	./scripts/launch_job.sh
+
+run_all:
+	./scripts/run_all_algos.sh
+
+sync:
+	./scripts/sync.sh
+
+delete:
+	./scripts/delete_all_jobs.sh
+
 download:
 	./scripts/download_rl_unplugged.sh
-
-# PyPI package release
-release:
-	$(call check_install, twine)
-	python setup.py sdist bdist_wheel
-	twine -r devpi-dev upload dist/*
-
-nightly-upload:
-	$(call check_install, twine)
-	./scripts/nightly_upload.py ${PROJECT_NAME}
 
 .PHONY: clean spelling doc mypy lint format check-codestyle check-docstyle commit-checks k8s submit-k8s
