@@ -107,6 +107,7 @@ class WandBLogger(object):
       time.sleep(np.random.uniform(0, self.config.random_delay))
 
     self.run = wandb.init(
+      entity=self.config.team,
       reinit=True,
       config=self._variant,
       project=self.config.project,
