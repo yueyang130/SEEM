@@ -603,7 +603,7 @@ class GaussianDiffusion:
 
     indices = list(range(self.num_timesteps))[::-1]
     for i in indices:
-      t = np.ones(shape) * i
+      t = np.ones(shape[:-1], dtype=np.int32) * i
       model_ouput = model_forward(x, self._scale_timesteps(t))
       rng_key, sample_key = jax.random.split(rng_key)
       out = self.ddim_sample(

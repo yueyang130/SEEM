@@ -34,13 +34,14 @@ class DiffusionQL(Algo):
     cfg.time_embed_size = 16
     cfg.alpha = 2.  # NOTE 0.25 in diffusion rl but 2.5 in td3
     cfg.use_pred_astart = True
-    cfg.max_grad_norm = 0.
+    cfg.max_q_backup = False
 
     # learning related
     cfg.lr = 3e-4
     cfg.guide_coef = 1.0
     cfg.lr_decay = False
     cfg.lr_decay_steps = 1000000
+    cfg.max_grad_norm = 0.
 
     cfg.loss_type = 'TD3'
     cfg.use_expectile = False
@@ -73,19 +74,19 @@ class DiffusionQL(Algo):
       jnp.zeros((10, self.observation_dim)),
     )
 
-    def get_lr():
-      if self.config.lr_decay is True:
+    def get_lr(lr_decay=False):
+      if lr_decay is True:
         return optax.cosine_decay_schedule(
           self.config.lr, decay_steps=self.config.lr_decay_steps
         )
       else:
         return self.config.lr
 
-    def get_optimizer():
+    def get_optimizer(lr_decay=False):
       if self.config.max_grad_norm > 0:
         opt = optax.chain(
           optax.clip_by_global_norm(self.config.max_grad_norm),
-          optax.adam(get_lr()),
+          optax.adam(get_lr(lr_decay)),
         )
       else:
         opt = optax.adam(get_lr())
@@ -93,7 +94,9 @@ class DiffusionQL(Algo):
       return opt
 
     self._train_states['policy'] = TrainState.create(
-      params=policy_params, tx=get_optimizer(), apply_fn=None
+      params=policy_params,
+      tx=get_optimizer(self.config.lr_decay),
+      apply_fn=None
     )
 
     qf1_params = self.qf.init(
@@ -135,16 +138,30 @@ class DiffusionQL(Algo):
       dones = batch['dones']
 
       rng, split_rng = jax.random.split(rng)
-      next_action = self.policy.apply(
-        tgt_params['policy'], split_rng, next_observations
-      )
-      # TODO: check whether we need to clip `next_action`
-      next_action = jnp.clip(next_action, -self.max_action, self.max_action)
 
       # Compute the target Q values (without gradient)
-      tgt_q1 = self.qf.apply(tgt_params['qf1'], next_observations, next_action)
-      tgt_q2 = self.qf.apply(tgt_params['qf2'], next_observations, next_action)
-      tgt_q = jnp.minimum(tgt_q1, tgt_q2)
+      if self.config.max_q_backup:
+        next_action = self.policy.apply(
+          tgt_params['policy'], split_rng, next_observations, repeat=10
+        )
+        next_action = jnp.clip(next_action, -self.max_action, self.max_action)
+        next_obs_repeat = jnp.repeat(
+          jnp.expand_dims(next_observations, axis=1), 10, axis=1
+        )
+        tgt_q1 = self.qf.apply(tgt_params['qf1'], next_obs_repeat, next_action)
+        tgt_q2 = self.qf.apply(tgt_params['qf2'], next_obs_repeat, next_action)
+        tgt_q = jnp.minimum(tgt_q1.max(axis=-1), tgt_q2.max(axis=-1))
+      else:
+        next_action = self.policy.apply(
+          tgt_params['policy'], split_rng, next_observations
+        )
+        tgt_q1 = self.qf.apply(
+          tgt_params['qf1'], next_observations, next_action
+        )
+        tgt_q2 = self.qf.apply(
+          tgt_params['qf2'], next_observations, next_action
+        )
+        tgt_q = jnp.minimum(tgt_q1, tgt_q2)
       tgt_q = rewards + (1 - dones) * self.config.discount * tgt_q
       tgt_q = jax.lax.stop_gradient(tgt_q)
 
@@ -161,12 +178,12 @@ class DiffusionQL(Algo):
         exp_w1 = jnp.where(
           diff1 > 0, self.config.exp_tau, 1 - self.config.exp_tau
         )
-        qf1_loss = (exp_w1 * (diff1 ** 2)).mean()
+        qf1_loss = (exp_w1 * (diff1**2)).mean()
         diff2 = cur_q2 - tgt_q
         exp_w2 = jnp.where(
           diff2 > 0, self.config.exp_tau, 1 - self.config.exp_tau
         )
-        qf2_loss = (exp_w2 * (diff2 ** 2)).mean()
+        qf2_loss = (exp_w2 * (diff2**2)).mean()
 
       qf_loss = qf1_loss + qf2_loss
 
@@ -188,7 +205,8 @@ class DiffusionQL(Algo):
 
       rng, split_rng = jax.random.split(rng)
       replicated_out = jnp.broadcast_to(
-        terms["model_output"], (self.config.sample_actions,) + terms["model_output"].shape
+        terms["model_output"],
+        (self.config.sample_actions,) + terms["model_output"].shape
       )
       replicated_obs = jnp.broadcast_to(
         observations, (self.config.sample_actions,) + observations.shape
@@ -201,7 +219,9 @@ class DiffusionQL(Algo):
           pred_astart, jnp.ones_like(pred_astart)
         )
         rng, split_rng = jax.random.split(rng)
-        vf_actions = action_dist.sample(seed=split_rng, sample_shape=self.config.sample_actions)
+        vf_actions = action_dist.sample(
+          seed=split_rng, sample_shape=self.config.sample_actions
+        )
       else:
         pred_astart = self.policy.apply(
           params['policy'], split_rng, observations
@@ -209,7 +229,7 @@ class DiffusionQL(Algo):
         action_dist = distrax.MultivariateNormalDiag(
           pred_astart, jnp.ones_like(pred_astart)
         )
-        rng, split_rng= jax.random.split(rng)
+        rng, split_rng = jax.random.split(rng)
         vf_actions = self.policy.apply(
           params['policy'], split_rng, replicated_obs
         )
@@ -219,6 +239,7 @@ class DiffusionQL(Algo):
       v = jnp.minimum(v1, v2)
 
       if self.config.loss_type == 'TD3':
+
         def fn(key):
           q = self.qf.apply(params[key], observations, pred_astart)
           lmbda = self.config.alpha / jax.lax.stop_gradient(jnp.abs(q).mean())
@@ -226,7 +247,8 @@ class DiffusionQL(Algo):
           return lmbda, policy_loss
 
         lmbda, guide_loss = jax.lax.cond(
-          jax.random.uniform(rng) > 0.5, partial(fn, 'qf1'), partial(fn, 'qf2')
+          jax.random.uniform(rng) > 0.5, partial(fn, 'qf1'),
+          partial(fn, 'qf2')
         )
       elif self.config.loss_type == 'CRR':
         q_pred = jnp.minimum(cur_q1, cur_q2)
