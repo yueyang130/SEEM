@@ -107,7 +107,7 @@ class DiffusionPolicy(nn.Module):
       rng_key=rng,
       model_forward=partial(self.base_net, observations),
       shape=shape,
-      clip_denoised=False,
+      clip_denoised=True,
     )
 
   def dpm_sample(self, rng, observations, deterministic=False, repeat=None):
