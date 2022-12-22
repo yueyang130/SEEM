@@ -34,8 +34,8 @@ def get_named_beta_schedule(schedule_name, num_diffusion_timesteps):
     # Linear schedule from Ho et al, extended to work for any number of
     # diffusion steps.
     # NOTE: Double check beta start and end
-    # scale = 1000 / num_diffusion_timesteps
-    scale = 1.0
+    scale = 1000 / num_diffusion_timesteps
+    # scale = 1.0
     beta_start = scale * 0.0001
     beta_end = scale * 0.02
     return np.linspace(

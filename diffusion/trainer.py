@@ -226,8 +226,11 @@ class DiffusionTrainer(MFTrainer):
         if epoch == 0 or (epoch + 1) % self._cfgs.eval_period == 0:
 
           for method in act_methods:
+            # TODO: merge these two
             self._sampler_policy.act_method = \
               method or self._cfgs.sample_method + "ensemble"
+            if self._cfgs.sample_method == 'ddim':
+              self._sampler_policy.act_method = "ensemble"
             trajs = self._eval_sampler.sample(
               self._sampler_policy.update_params(self._agent.train_params),
               self._cfgs.eval_n_trajs,
@@ -314,6 +317,8 @@ class DiffusionTrainer(MFTrainer):
       time_embed_size=self._cfgs.algo_cfg.time_embed_size,
       use_layer_norm=self._cfgs.use_layer_norm,
       sample_method=self._cfgs.sample_method,
+      dpm_steps=self._cfgs.algo_cfg.dpm_steps,
+      dpm_t_end=self._cfgs.algo_cfg.dpm_t_end,
     )
 
     return policy

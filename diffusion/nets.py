@@ -83,6 +83,8 @@ class DiffusionPolicy(nn.Module):
   use_layer_norm: bool = False
   use_dpm: bool = False
   sample_method: str = "ddpm"
+  dpm_steps: int = 15
+  dpm_t_end: float = 0.001
 
   def setup(self):
     self.base_net = PolicyNet(
@@ -150,7 +152,7 @@ class DiffusionPolicy(nn.Module):
       predict_x0=self.diffusion.model_mean_type is ModelMeanType.START_X,
     )
     x = jax.random.normal(rng, shape)
-    out = dpm_sampler.sample(x, steps=15)
+    out = dpm_sampler.sample(x, steps=self.dpm_steps, t_end=self.dpm_t_end)
 
     return out
 

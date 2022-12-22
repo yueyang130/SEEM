@@ -35,6 +35,8 @@ class DiffusionQL(Algo):
     cfg.alpha = 2.  # NOTE 0.25 in diffusion rl but 2.5 in td3
     cfg.use_pred_astart = True
     cfg.max_q_backup = False
+    cfg.max_q_backup_topk = 1
+    cfg.max_q_backup_samples = 10
 
     # learning related
     cfg.lr = 3e-4
@@ -49,6 +51,10 @@ class DiffusionQL(Algo):
     cfg.sample_actions = 20
     cfg.crr_ratio_upper_bound = 20
     cfg.crr_beta = 1.0
+
+    # for dpm-solver
+    cfg.dpm_steps = 15
+    cfg.dpm_t_end = 0.001
 
     # useless
     cfg.target_entropy = -1
@@ -141,16 +147,25 @@ class DiffusionQL(Algo):
 
       # Compute the target Q values (without gradient)
       if self.config.max_q_backup:
+        samples = self.config.max_q_backup_samples
         next_action = self.policy.apply(
-          tgt_params['policy'], split_rng, next_observations, repeat=10
+          tgt_params['policy'], split_rng, next_observations, repeat=samples
         )
         next_action = jnp.clip(next_action, -self.max_action, self.max_action)
         next_obs_repeat = jnp.repeat(
-          jnp.expand_dims(next_observations, axis=1), 10, axis=1
+          jnp.expand_dims(next_observations, axis=1), samples, axis=1
         )
         tgt_q1 = self.qf.apply(tgt_params['qf1'], next_obs_repeat, next_action)
         tgt_q2 = self.qf.apply(tgt_params['qf2'], next_obs_repeat, next_action)
-        tgt_q = jnp.minimum(tgt_q1.max(axis=-1), tgt_q2.max(axis=-1))
+
+        tk = self.config.max_q_backup_topk
+        if tk == 1:
+          tgt_q = jnp.minimum(tgt_q1.max(axis=-1), tgt_q2.max(axis=-1))
+        else:
+          batch_idx = jax.vmap(lambda x, i: x[i], 0)
+          tgt_q1_max = batch_idx(tgt_q1, jnp.argsort(tgt_q1, axis=-1)[:, -tk])
+          tgt_q2_max = batch_idx(tgt_q2, jnp.argsort(tgt_q2, axis=-1)[:, -tk])
+          tgt_q = jnp.minimum(tgt_q1_max, tgt_q2_max)
       else:
         next_action = self.policy.apply(
           tgt_params['policy'], split_rng, next_observations
@@ -311,6 +326,9 @@ class DiffusionQL(Algo):
       tgt_q2=aux_values['tgt_q2'].mean(),
       tgt_q=aux_values['tgt_q'].mean(),
       lmbda=aux_values['lmbda'].mean(),
+      qf1_grad_norm=optax.global_norm(grads[1]['qf1']),
+      qf2_grad_norm=optax.global_norm(grads[2]['qf2']),
+      policy_grad_norm=optax.global_norm(grads[0]['policy']),
     )
 
     return train_states, tgt_params, metrics
