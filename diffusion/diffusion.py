@@ -46,6 +46,14 @@ def get_named_beta_schedule(schedule_name, num_diffusion_timesteps):
       num_diffusion_timesteps,
       lambda t: math.cos((t + 0.008) / 1.008 * math.pi / 2)**2,
     )
+  elif schedule_name == "vp":
+    T = num_diffusion_timesteps
+    t = np.arange(1, T + 1)
+    b_max = 10.
+    b_min = 0.1
+    alpha = np.exp(-b_min / T - 0.5 * (b_max - b_min) * (2 * t - 1) / T**2)
+    betas = 1 - alpha
+    return betas
   else:
     raise NotImplementedError(f"unknown beta schedule: {schedule_name}")
 
@@ -660,7 +668,7 @@ class GaussianDiffusion:
     x_t = self.q_sample(x_start, t, noise=noise)
     model_output = model_forward(x_t, self._scale_timesteps(t))
 
-    terms = {"model_output": model_output}
+    terms = {"model_output": model_output, "x_t": x_t}
 
     if self.loss_type == LossType.KL or self.loss_type == LossType.RESCALED_KL:
       terms["loss"] = self._vb_terms_bpd(
