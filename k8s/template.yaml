@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  generateName: "offbench-%{ALGO}-%{USER_ID}-job-"
+  generateName: "offbench-diffrl-%{USER_ID}-job-"
   labels:
     estimated-running-time: "2h"
 spec:

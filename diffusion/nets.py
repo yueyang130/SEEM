@@ -12,6 +12,7 @@ from diffusion.dpm_solver import NoiseScheduleVP, DPM_Solver
 from diffusion.diffusion import (
   GaussianDiffusion, ModelMeanType, _extract_into_tensor
 )
+import distrax
 
 
 def mish(x):
@@ -214,3 +215,22 @@ class Critic(nn.Module):
   @property
   def input_size(self):
     return self.observation_dim
+
+
+class GaussianPolicy(nn.Module):
+  action_dim: int
+  log_std_min: float = -5.0
+  log_std_max: float = 2.0
+  temperature: float = 1.0
+
+  @nn.compact
+  def __call__(self, mean):
+    log_stds = self.param(
+      'log_stds', nn.initializers.zeros, (self.action_dim,)
+    )
+    log_stds = jnp.clip(
+      log_stds, self.log_std_min, self.log_std_max
+    )
+    return distrax.MultivariateNormalDiag(
+      mean, jnp.exp(log_stds * self.temperature)
+    )

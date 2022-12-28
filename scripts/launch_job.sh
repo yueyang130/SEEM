@@ -2,15 +2,31 @@
 
 TASK="${TASK:-gym}" # d4rl / antmaze / rl_unplugged
 PRIORITY="${PRIORITY:-low}"
-ALGO="${ALGO:-DiffusionQL}"
+ALGO="${ALGO:-DiffQL}"
 RUNS="${RUNS:-1}" # d4rl / antmaze / rl_unplugged
 DBMODE="${DBMODE:-mcmc}"
 N_SAMPLES="${N_SAMPLES:-50}"
-USE_LAYER_NORM="${USE_LAYER_NORM:-False}"
+QF_LAYER_NORM="${QF_LAYER_NORM:-False}"
+POLICY_LAYER_NORM="${POLICY_LAYER_NORM:-False}"
 OBS_NORM="${OBS_NORM:-False}"
 LOSS_TYPE="${LOSS_TYPE:-TD3}"
+SAMPLE_METHOD="${SAMPLE_METHOD:-ddpm}"
+WEIGHT_MODE="${WEIGHT_MODE:-mle}"
+AVG_FN="${AVG_FN:-mean}"
+CRR_FN="${CRR_FN:-exp}"
+ADV_NORM="${ADV_NORM:-False}"
 
-BASE_CMD="python -m diffusion.trainer --logging.output_dir=./experiment_output --logging.online --algo=${ALGO} --algo_cfg.n_actions=${N_SAMPLES} --use_layer_norm=${USE_LAYER_NORM} --obs_norm=${OBS_NORM} --algo_cfg.loss_type=${LOSS_TYPE}"
+if [ "$SAMPLE_METHOD" = "ddpm" ];
+then
+  NUM_T=100
+elif [ "$SAMPLE_METHOD" = 'dpm' ];
+then
+  NUM_T=1000
+else
+  echo "sample method not implemented"
+fi
+
+BASE_CMD="python -m diffusion.trainer --logging.output_dir=./experiment_output --logging.online --algo=${ALGO} --obs_norm=${OBS_NORM} --algo_cfg.loss_type=${LOSS_TYPE} --sample_method=${SAMPLE_METHOD} --algo_cfg.crr_avg_fn=${AVG_FN} --algo_cfg.crr_fn=${CRR_FN} --algo_cfg.crr_adv_norm=${ADV_NORM} --qf_layer_norm=${QF_LAYER_NORM} --policy_layer_norm=${POLICY_LAYER_NORM} --algo_cfg.num_timesteps=${NUM_T}"
 
 for (( i=1; i<=${RUNS}; i++ ))
 do
@@ -34,13 +50,13 @@ elif [ "$TASK" = "rl_unplugged" ]; then
 elif [ "$TASK" = "antmaze" ]; then
   for level in umaze-v0 umaze-diverse-v0 medium-play-v0 medium-diverse-v0 large-play-v0 large-diverse-v0
   do
-    PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --seed=${i}  --env=antmaze-${level} --eval_n_trajs=100 --algo_cfg.bc_weight_misa=0.5 --algo_cfg.lagrange=True --algo_cfg.add_positive=True --use_layer_norm=True --algo_cfg.unbiased_grad=True --eval_period=50 --algo_cfg.use_automatic_entropy_tuning=True --algo_cfg.qf_lr=0.0001 --algo_cfg.target_action_gap=3.0 --obs_norm=False --n_epochs=2000"
+    PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --seed=${i}  --env=antmaze-${level} --eval_n_trajs=100 --eval_period=50 --n_epochs=2000 --algo_cfg.max_q_backup=True"
     sleep 1
   done
 elif [ "$TASK" = "kitchen" ]; then
   for level in complete-v0 partial-v0 mixed-v0
   do
-    PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --seed=${i} --env=kitchen-${level} --n_epochs 1000 --algo_cfg.bc_weight_misa=3.0 --use_layer_norm=True --algo_cfg.detach_pi=True --algo_cfg.use_automatic_entropy_tuning=True --algo_cfg.unbiased_grad=True --obs_norm=False --algo_cfg.qf_lr=0.0001"
+    PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --seed=${i} --env=kitchen-${level} --n_epochs 1000"
     sleep 1
   done
 elif [ "$TASK" = "adroit" ]; then
@@ -48,7 +64,7 @@ elif [ "$TASK" = "adroit" ]; then
   do
     for tp in human cloned
     do
-      PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --algo=${ALGO} --seed=${i} --env=${scenario}-${tp}-v0 --n_epochs 1000 --algo_cfg.use_automatic_entropy_tuning=False --algo_cfg.target_action_gap=3.0 --algo_cfg.bc_weight_misa=5.0 --algo_cfg.detach_pi=False --obs_norm=False --use_layer_norm=True"
+      PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --algo=${ALGO} --seed=${i} --env=${scenario}-${tp}-v0 --n_epochs 1000"
       sleep 1
     done
   done

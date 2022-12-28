@@ -8,23 +8,24 @@ import tqdm
 import numpy as np
 import os
 
-from experiments.constants import ENV_MAP
+from experiments.constants import ENV_MAP, ENVNAME_MAP, DATASET_ABBR_MAP
 from utilities.utils import (
   Timer,
   WandBLogger,
   get_user_flags,
   define_flags_with_default,
   prefix_metrics,
+  set_random_seed
 )
 from utilities.jax_utils import next_rng, batch_to_jax
 
 from experiments.mf_trainer import MFTrainer
 from diffusion.dql import DiffusionQL
-from diffusion.nets import DiffusionPolicy, Critic
+from diffusion.nets import DiffusionPolicy, Critic, GaussianPolicy
 from diffusion.diffusion import (
   GaussianDiffusion, ModelMeanType, ModelVarType, LossType
 )
-from viskit.logging import logger
+from viskit.logging import logger, setup_logger
 from diffusion.hps import hyperparameters
 
 FLAGS_DEF = define_flags_with_default(
@@ -48,16 +49,18 @@ FLAGS_DEF = define_flags_with_default(
   policy_log_std_multiplier=1.0,
   policy_log_std_offset=-1.0,
   algo_cfg=DiffusionQL.get_default_config(),
-  n_epochs=1200,
+  n_epochs=2000,
   n_train_step_per_epoch=1000,
   eval_period=10,
   eval_n_trajs=10,
   logging=WandBLogger.get_default_config(),
-  use_layer_norm=False,
+  qf_layer_norm=False,
+  policy_layer_norm=False,
   activation="elu",
   obs_norm=False,
   act_method='',
   sample_method='ddpm',
+  policy_temp=1.0,
 )
 
 
@@ -185,6 +188,7 @@ class DiffusionTrainer(MFTrainer):
     self._cfgs = absl.flags.FLAGS
     self._algo = DiffusionQL
     self._algo_type = 'DiffusionQL'
+
     self._cfgs.algo_cfg.max_grad_norm = hyperparameters[self._cfgs.env]['gn']
     self._cfgs.algo_cfg.lr_decay_steps = \
       self._cfgs.n_epochs * self._cfgs.n_train_step_per_epoch
@@ -204,11 +208,6 @@ class DiffusionTrainer(MFTrainer):
 
   def train(self):
     self._setup()
-
-    # import pickle
-    # with open('../tmp/model_final.pkl', 'rb') as f:
-    #   ckpt = pickle.load(f)
-    #   self._agent = ckpt['agent']
 
     act_methods = self._cfgs.act_method.split('-')
     viskit_metrics = {}
@@ -286,7 +285,24 @@ class DiffusionTrainer(MFTrainer):
       self._wandb_logger.save_pickle(save_data, "model_final.pkl")
 
   def _setup(self):
-    super()._setup()
+
+    set_random_seed(self._cfgs.seed)
+       # setup logger
+    self._wandb_logger = self._setup_logger()
+
+    # setup dataset and eval_sample
+    self._dataset, self._eval_sampler = self._setup_dataset()
+
+    # setup policy
+    self._policy = self._setup_policy()
+    self._policy_dist = GaussianPolicy(self._action_dim, temperature=self._cfgs.policy_temp)
+
+    # setup Q-function
+    self._qf = self._setup_qf()
+
+    # setup agent
+    self._agent = self._algo(self._cfgs.algo_cfg, self._policy, self._qf, self._policy_dist)
+
     # setup sampler policy
     self._sampler_policy = SamplerPolicy(self._agent.policy, self._agent.qf)
 
@@ -295,7 +311,7 @@ class DiffusionTrainer(MFTrainer):
       self._observation_dim,
       self._action_dim,
       to_arch(self._cfgs.qf_arch),
-      use_layer_norm=self._cfgs.use_layer_norm
+      use_layer_norm=self._cfgs.qf_layer_norm,
     )
     return qf
 
@@ -315,13 +331,35 @@ class DiffusionTrainer(MFTrainer):
       action_dim=self._action_dim,
       arch=to_arch(self._cfgs.policy_arch),
       time_embed_size=self._cfgs.algo_cfg.time_embed_size,
-      use_layer_norm=self._cfgs.use_layer_norm,
+      use_layer_norm=self._cfgs.policy_layer_norm,
       sample_method=self._cfgs.sample_method,
       dpm_steps=self._cfgs.algo_cfg.dpm_steps,
       dpm_t_end=self._cfgs.algo_cfg.dpm_t_end,
     )
 
     return policy
+
+  def _setup_logger(self):
+    env_name_high = ENVNAME_MAP[self._env]
+    env_name_full = self._cfgs.env
+    dataset_name_abbr = DATASET_ABBR_MAP[self._cfgs.dataset]
+
+    logging_configs = self._cfgs.logging
+    logging_configs["project"
+                   ] = f"{self._cfgs.algo}-{env_name_high}-{dataset_name_abbr}-{self._cfgs.algo_cfg.loss_type}"
+    wandb_logger = WandBLogger(
+      config=logging_configs, variant=self._variant, env_name=env_name_full
+    )
+    setup_logger(
+      variant=self._variant,
+      exp_id=wandb_logger.experiment_id,
+      seed=self._cfgs.seed,
+      base_log_dir=self._cfgs.logging.output_dir,
+      include_exp_prefix_sub_dir=False,
+    )
+
+    return wandb_logger
+
 
 
 def to_arch(string):

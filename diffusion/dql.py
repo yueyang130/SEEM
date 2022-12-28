@@ -40,6 +40,7 @@ class DiffusionQL(Algo):
 
     # learning related
     cfg.lr = 3e-4
+    cfg.diff_coef = 1.0
     cfg.guide_coef = 1.0
     cfg.lr_decay = False
     cfg.lr_decay_steps = 1000000
@@ -47,11 +48,19 @@ class DiffusionQL(Algo):
     cfg.weight_decay = 0.
 
     cfg.loss_type = 'TD3'
+
+    # CRR-related hps
     cfg.use_expectile = False
     cfg.exp_tau = 0.7
     cfg.sample_actions = 20
     cfg.crr_ratio_upper_bound = 20
     cfg.crr_beta = 1.0
+    cfg.crr_weight_mode = 'mle'
+    cfg.crr_fixed_std = True
+    cfg.crr_multi_sample_mse = False
+    cfg.crr_avg_fn = 'mean'
+    cfg.crr_fn = 'exp'
+    cfg.crr_adv_norm = False
 
     # for dpm-solver
     cfg.dpm_steps = 15
@@ -63,10 +72,11 @@ class DiffusionQL(Algo):
       cfg.update(ConfigDict(updates).copy_and_resolve_references())
     return cfg
 
-  def __init__(self, cfg, policy, qf):
+  def __init__(self, cfg, policy, qf, policy_dist):
     self.config = self.get_default_config(cfg)
     self.policy = policy
     self.qf = qf
+    self.policy_dist = policy_dist
     self.observation_dim = policy.observation_dim
     self.action_dim = policy.action_dim
     self.max_action = policy.max_action
@@ -106,6 +116,15 @@ class DiffusionQL(Algo):
       apply_fn=None
     )
 
+    policy_dist_params = self.policy_dist.init(
+      next_rng(), jnp.zeros((10, self.action_dim))
+    )
+    self._train_states['policy_dist'] = TrainState.create(
+      params=policy_dist_params,
+      tx=get_optimizer(),
+      apply_fn=None
+    )
+
     qf1_params = self.qf.init(
       next_rng(),
       jnp.zeros((10, self.observation_dim)),
@@ -130,7 +149,7 @@ class DiffusionQL(Algo):
         'qf2': qf2_params,
       }
     )
-    self._model_keys = ('policy', 'qf1', 'qf2')
+    self._model_keys = ('policy', 'qf1', 'qf2', 'policy_dist')
 
   def get_value_loss(self, batch):
 
@@ -345,15 +364,22 @@ class DiffusionQL(Algo):
       actions = batch['actions']
 
       rng, split_rng = jax.random.split(rng)
+      # Calculate the guide loss
       diff_loss, _, _, pred_astart = diff_loss_fn(params, split_rng)
 
-      # Calculate guide loss
+      # Construct the policy distribution
+      action_dist = self.policy_dist.apply(
+        params['policy_dist'],
+        pred_astart
+      )
+      if self.config.crr_fixed_std:
+        action_dist = distrax.MultivariateNormalDiag(
+          pred_astart, jnp.ones_like(pred_astart)
+        )
+
       # Build action distribution
       replicated_obs = jnp.broadcast_to(
         observations, (self.config.sample_actions,) + observations.shape
-      )
-      action_dist = distrax.MultivariateNormalDiag(
-        pred_astart, jnp.ones_like(pred_astart)
       )
       rng, split_rng = jax.random.split(rng)
       if self.config.use_pred_astart:
@@ -364,6 +390,7 @@ class DiffusionQL(Algo):
         vf_actions = self.policy.apply(
           params['policy'], split_rng, replicated_obs
         )
+
       # Compute the current Q estimates
       cur_q1 = self.qf.apply(params['qf1'], observations, actions)
       cur_q2 = self.qf.apply(params['qf2'], observations, actions)
@@ -372,29 +399,45 @@ class DiffusionQL(Algo):
       v1 = self.qf.apply(params['qf1'], replicated_obs, vf_actions)
       v2 = self.qf.apply(params['qf2'], replicated_obs, vf_actions)
       v = jnp.minimum(v1, v2)
-
       q_pred = jnp.minimum(cur_q1, cur_q2)
-      adv = q_pred - jnp.mean(v, axis=0)
-      lmbda = jnp.minimum(
-        self.config.crr_ratio_upper_bound, jnp.exp(adv / self.config.crr_beta)
-      )
+      avg_fn = getattr(jnp, self.config.crr_avg_fn)
+      adv = q_pred - avg_fn(v, axis=0)
+      if self.config.crr_fn == 'exp':
+        lmbda = jnp.minimum(
+          self.config.crr_ratio_upper_bound,
+          jnp.exp(adv / self.config.crr_beta)
+        )
+        if self.config.crr_adv_norm:
+          lmbda = jax.nn.softmax(adv / self.config.crr_beta)
+      else:
+        lmbda = jnp.heaviside(adv, 0)
       lmbda = jax.lax.stop_gradient(lmbda)
-      log_prob = action_dist.log_prob(actions)
+      if self.config.crr_weight_mode == 'mle':
+        log_prob = action_dist.log_prob(actions)
+      else:
+        rng, split_rng = jax.random.split(rng)
+        if not self.config.crr_multi_sample_mse:
+          sampled_actions = action_dist.sample(seed=split_rng)
+          log_prob = -((sampled_actions - actions)**2).mean(axis=-1)
+        else:
+          sampled_actions = action_dist.sample(seed=split_rng,
+                                              sample_shape=self.config.sample_actions)
+          log_prob = -((sampled_actions - jnp.expand_dims(actions, axis=0)) **
+                       2).mean(axis=(0, -1))
       guide_loss = -jnp.mean(log_prob * lmbda)
 
-      policy_loss = diff_loss + self.config.guide_coef * guide_loss
-      return (policy_loss,), locals()
+      policy_loss = self.config.diff_coef * diff_loss + self.config.guide_coef * guide_loss
+      losses = {'policy': policy_loss, 'policy_dist': policy_loss}
+      return tuple(losses[key] for key in losses.keys()), locals()
 
-    # Calculat q losses and grads
+    # Calculat policy losses and grads
     params = {key: train_states[key].params for key in self.model_keys}
     (_, aux_qf), grads_qf = value_and_multi_grad(
       value_loss_fn, 2, has_aux=True
     )(params, tgt_params, rng)
 
-    # Calculat policy losses and grads
-    params = {key: train_states[key].params for key in self.model_keys}
     (_, aux_policy), grads_policy = value_and_multi_grad(
-      policy_loss_fn, 1, has_aux=True
+      policy_loss_fn, 2, has_aux=True
     )(params, tgt_params, rng)
 
     # Update qf train states
@@ -405,9 +448,11 @@ class DiffusionQL(Algo):
       grads=grads_qf[1]['qf2']
     )
 
-    # Update policy train states
     train_states['policy'] = train_states['policy'].apply_gradients(
       grads=grads_policy[0]['policy']
+    )
+    train_states['policy_dist'] = train_states['policy_dist'].apply_gradients(
+      grads=grads_policy[1]['policy_dist']
     )
 
     # Update target parameters
@@ -442,6 +487,10 @@ class DiffusionQL(Algo):
       qf2_weight_norm=optax.global_norm(train_states['qf2'].params),
       policy_weight_norm=optax.global_norm(train_states['policy'].params),
     )
+
+    if self.config.loss_type == 'CRR':
+      metrics['adv'] = aux_policy['adv'].mean()
+      metrics['log_prob'] = aux_policy['log_prob'].mean()
 
     return train_states, tgt_params, metrics
 

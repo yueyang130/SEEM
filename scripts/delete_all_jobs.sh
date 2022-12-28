@@ -10,4 +10,4 @@ else
   USER_ID=${username}
 fi
 
-kubectl delete job -n ${NS} `kubectl get job -n ${NS} | grep off | grep $USER_ID | awk '{print $1}'`
+kubectl delete job -n ${NS} `kubectl get job -n ${NS} | grep diff | grep $USER_ID | awk '{print $1}'`
