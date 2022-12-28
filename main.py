@@ -54,6 +54,7 @@ if __name__ == "__main__":
     # load weight
     parser.add_argument("--bc_eval", type=int, default=1)   
     parser.add_argument("--weight_num", type=int, default=2, help='how many weights to compute avg')       
+    parser.add_argument("--weight_ensemble", type=str, default='mean', help='how to aggregate weights over runnings')       
     parser.add_argument("--weight_path", type=str, help='bc adv path')       
     parser.add_argument("--iter", type=int, default=5, help='K th rebalanced behavior policy.')       
     parser.add_argument("--weight_func", default='linear', choices=['linear', 'exp', 'power'])    
@@ -70,7 +71,7 @@ if __name__ == "__main__":
     parser.add_argument("--noise_clip", default=0.5)                # Range to clip target policy noise
     parser.add_argument("--policy_freq", default=2, type=int)       # Frequency of delayed policy updates
     # TD3 + BC
-    parser.add_argument("--alpha", default=2.5)
+    parser.add_argument("--alpha", default=2.5, type=float)
     parser.add_argument("--normalize", default=True)
     # rebalance
     parser.add_argument("--base_prob", default=0.0, type=float)
@@ -118,6 +119,7 @@ if __name__ == "__main__":
         # generate weight
         "iter": args.iter,
         "bc_eval": args.bc_eval,
+        "weight_ensemble": args.weight_ensemble,
         "weight_func": args.weight_func,
         "exp_lambd": args.exp_lambd,
         "std": args.std,
@@ -141,8 +143,10 @@ if __name__ == "__main__":
             **kwargs
             })
 
+    # replay_buffer = utils.ReplayBuffer(state_dim, action_dim, args.batch_size,
+    #     base_prob=args.base_prob, resample=args.resample, reweight=args.reweight, discount=args.discount)
     replay_buffer = utils.ReplayBuffer(state_dim, action_dim, args.batch_size,
-        base_prob=args.base_prob, resample=args.resample, reweight=args.reweight, discount=args.discount)
+        base_prob=args.base_prob, resample=args.resample, reweight=args.reweight, n_step=1, discount=args.discount)
     replay_buffer.convert_D4RL(d4rl.qlearning_dataset(env))
     # save return dist
     np.save(f'./weights/{args.env}_returns.npy', replay_buffer.returns)
@@ -168,7 +172,12 @@ if __name__ == "__main__":
             assert args.iter <= num_iter
             weight_list.append(eval_res[args.iter])
             print(f'Loading weights from {wp} at {args.iter}th rebalanced behavior policy')
-        weight = np.stack(weight_list, axis=0).mean(axis=0)
+        if args.weight_ensemble == 'mean':
+            weight = np.stack(weight_list, axis=0).mean(axis=0)
+        elif args.weight_ensemble == 'median':
+            weight = np.median(np.stack(weight_list, axis=0), axis=0)
+        else:
+            raise NotImplementedError
         replay_buffer.replace_weights(weight, args.weight_func, args.exp_lambd, args.std, args.eps, args.eps_max)
 
     # Initialize policy

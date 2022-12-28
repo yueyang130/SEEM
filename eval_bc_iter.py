@@ -37,13 +37,14 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic
     parser.add_argument("--discount", default=0.99)                 # Discount factor
     parser.add_argument("--tau", default=0.005) 
-    parser.add_argument("--normalize", default=True)
+    parser.add_argument("--normalize", default=1, type=int)
     parser.add_argument("--tag", default='', type=str)                   # Target network update rate
     args = parser.parse_args()
 
 
+    # file_name = f"{args.critic_type}_{args.td_type}_{args.adv_type}_{args.n_step}_{args.lambd}_{args.bc_lr_schedule}_{args.env}_{args.seed}"
     # file_name = f"{args.critic_type}_{args.td_type}_{args.adv_type}_{args.n_step}_{args.lambd}_{args.bc_lr_schedule}_{args.iter}_{args.bc_eval_steps}_scale={args.scale}_{args.env}_{args.seed}"
-    file_name = f"{args.first_eval_steps}_{args.iter}_{args.bc_eval_steps}_scale={args.scale}_{args.env}_{args.seed}"
+    file_name = f"{args.first_eval_steps}_{args.iter}_{args.bc_eval_steps}_{args.env}_{args.seed}"
     print("---------------------------------------")
     print(f"Policy: {args.policy}, Env: {args.env}, Seed: {args.seed}")
     print("---------------------------------------")
@@ -74,6 +75,7 @@ if __name__ == "__main__":
         "max_action": max_action,
         "discount": args.discount,
         "tau": args.tau,
+        "normalize": args.normalize,
         # generate weight
         "first_eval_steps": args.first_eval_steps,
         "bc_eval_steps": args.bc_eval_steps,
@@ -97,8 +99,12 @@ if __name__ == "__main__":
     # save return dist
     np.save(f'./weights/{args.env}_returns.npy', replay_buffer.returns)
     
+    #! Note: IQL and TD3+BC have different preprocess.
+    # IQL: For mujoco, reward norm; for antmaze, reward minus.
+    # TD3+BC: For all, state norm; for antmaze, reward minus.
     if 'antmaze' in args.env:
         replay_buffer.reward -= 1.0
+        # replay_buffer.reward = (replay_buffer.reward - 0.5) * 4 
     if args.normalize:
         mean,std = replay_buffer.normalize_states() 
     else:
@@ -152,9 +158,10 @@ if __name__ == "__main__":
 
             replay_buffer.reset_bc(weight)
             bc_eval_results[curr_itr] = weight
+            np.save(wp, bc_eval_results)
+            print(f'#iter {t+1}, saved at {file_name}')
 
 
-    np.save(wp, bc_eval_results)
-    print(f'saved at {file_name}')
+    
     
     
