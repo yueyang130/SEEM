@@ -15,7 +15,7 @@ from utilities.utils import (
   get_user_flags,
   define_flags_with_default,
   prefix_metrics,
-  set_random_seed
+  set_random_seed,
 )
 from utilities.jax_utils import next_rng, batch_to_jax
 
@@ -287,7 +287,7 @@ class DiffusionTrainer(MFTrainer):
   def _setup(self):
 
     set_random_seed(self._cfgs.seed)
-       # setup logger
+    # setup logger
     self._wandb_logger = self._setup_logger()
 
     # setup dataset and eval_sample
@@ -295,13 +295,17 @@ class DiffusionTrainer(MFTrainer):
 
     # setup policy
     self._policy = self._setup_policy()
-    self._policy_dist = GaussianPolicy(self._action_dim, temperature=self._cfgs.policy_temp)
+    self._policy_dist = GaussianPolicy(
+      self._action_dim, temperature=self._cfgs.policy_temp
+    )
 
     # setup Q-function
     self._qf = self._setup_qf()
 
     # setup agent
-    self._agent = self._algo(self._cfgs.algo_cfg, self._policy, self._qf, self._policy_dist)
+    self._agent = self._algo(
+      self._cfgs.algo_cfg, self._policy, self._qf, self._policy_dist
+    )
 
     # setup sampler policy
     self._sampler_policy = SamplerPolicy(self._agent.policy, self._agent.qf)
@@ -345,8 +349,8 @@ class DiffusionTrainer(MFTrainer):
     dataset_name_abbr = DATASET_ABBR_MAP[self._cfgs.dataset]
 
     logging_configs = self._cfgs.logging
-    logging_configs["project"
-                   ] = f"{self._cfgs.algo}-{env_name_high}-{dataset_name_abbr}-{self._cfgs.algo_cfg.loss_type}"
+    logging_configs["project"] = f"{self._cfgs.algo}-{env_name_high}-" + \
+      f"{dataset_name_abbr}-{self._cfgs.algo_cfg.loss_type}"
     wandb_logger = WandBLogger(
       config=logging_configs, variant=self._variant, env_name=env_name_full
     )
@@ -359,7 +363,6 @@ class DiffusionTrainer(MFTrainer):
     )
 
     return wandb_logger
-
 
 
 def to_arch(string):

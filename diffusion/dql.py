@@ -120,9 +120,7 @@ class DiffusionQL(Algo):
       next_rng(), jnp.zeros((10, self.action_dim))
     )
     self._train_states['policy_dist'] = TrainState.create(
-      params=policy_dist_params,
-      tx=get_optimizer(),
-      apply_fn=None
+      params=policy_dist_params, tx=get_optimizer(), apply_fn=None
     )
 
     qf1_params = self.qf.init(
@@ -365,13 +363,10 @@ class DiffusionQL(Algo):
 
       rng, split_rng = jax.random.split(rng)
       # Calculate the guide loss
-      diff_loss, _, _, pred_astart = diff_loss_fn(params, split_rng)
+      diff_loss, terms, ts, pred_astart = diff_loss_fn(params, split_rng)
 
       # Construct the policy distribution
-      action_dist = self.policy_dist.apply(
-        params['policy_dist'],
-        pred_astart
-      )
+      action_dist = self.policy_dist.apply(params['policy_dist'], pred_astart)
       if self.config.crr_fixed_std:
         action_dist = distrax.MultivariateNormalDiag(
           pred_astart, jnp.ones_like(pred_astart)
@@ -412,7 +407,9 @@ class DiffusionQL(Algo):
       else:
         lmbda = jnp.heaviside(adv, 0)
       lmbda = jax.lax.stop_gradient(lmbda)
-      if self.config.crr_weight_mode == 'mle':
+      if self.config.crr_weight_mode == 'elbo':
+        log_prob = -terms['ts_weights'] * terms['mse']
+      elif self.config.crr_weight_mode == 'mle':
         log_prob = action_dist.log_prob(actions)
       else:
         rng, split_rng = jax.random.split(rng)
@@ -420,13 +417,16 @@ class DiffusionQL(Algo):
           sampled_actions = action_dist.sample(seed=split_rng)
           log_prob = -((sampled_actions - actions)**2).mean(axis=-1)
         else:
-          sampled_actions = action_dist.sample(seed=split_rng,
-                                              sample_shape=self.config.sample_actions)
-          log_prob = -((sampled_actions - jnp.expand_dims(actions, axis=0)) **
-                       2).mean(axis=(0, -1))
+          sampled_actions = action_dist.sample(
+            seed=split_rng, sample_shape=self.config.sample_actions
+          )
+          log_prob = -(
+            (sampled_actions - jnp.expand_dims(actions, axis=0))**2
+          ).mean(axis=(0, -1))
       guide_loss = -jnp.mean(log_prob * lmbda)
 
-      policy_loss = self.config.diff_coef * diff_loss + self.config.guide_coef * guide_loss
+      policy_loss = self.config.diff_coef * diff_loss + \
+        self.config.guide_coef * guide_loss
       losses = {'policy': policy_loss, 'policy_dist': policy_loss}
       return tuple(losses[key] for key in losses.keys()), locals()
 

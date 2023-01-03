@@ -190,6 +190,8 @@ class GaussianDiffusion:
       (1.0 - self.alphas_cumprod_prev) * np.sqrt(alphas) /
       (1.0 - self.alphas_cumprod)
     )
+    self.ts_weights = ws = betas / (2 * (1 - self.alphas_cumprod) * alphas)
+    self.normalized_ts_weights = ws * num_timesteps / ws.sum()
 
   def q_mean_variance(self, x_start, t):
     """
@@ -669,6 +671,9 @@ class GaussianDiffusion:
     model_output = model_forward(x_t, self._scale_timesteps(t))
 
     terms = {"model_output": model_output, "x_t": x_t}
+    terms["ts_weights"] = _extract_into_tensor(
+      self.normalized_ts_weights, t, x_start.shape[:-1]
+    )
 
     if self.loss_type == LossType.KL or self.loss_type == LossType.RESCALED_KL:
       terms["loss"] = self._vb_terms_bpd(
