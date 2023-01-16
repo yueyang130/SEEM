@@ -20,8 +20,8 @@ if __name__ == "__main__":
     # generate weight
     parser.add_argument("--iter", type=int, default=5, help='how many times to iteratively rebalance')       
     parser.add_argument("--scale", action='store_true', help='If true, scale weights for larger standard deviation')       
-    parser.add_argument("--first_eval_steps", type=int, default=4e5, help='the first number of steps to eval a bc')       
-    parser.add_argument("--bc_eval_steps", type=int, default=2e5, help='number of steps to eval a bc')       
+    parser.add_argument("--first_eval_steps", type=int, default=1e6, help='the first number of steps to eval a bc')       
+    parser.add_argument("--bc_eval_steps", type=int, default=1e6, help='number of steps to eval a bc')       
     parser.add_argument("--critic_type", type=str, default='doublev', choices=['v', 'vq', 'doublev'])   
     parser.add_argument("--td_type", type=str, default='nstep', choices=['nstep', 'mc']) 
     parser.add_argument("--adv_type", type=str, default='nstep', choices=['nstep', 'mc', 'gae']) 
@@ -44,7 +44,7 @@ if __name__ == "__main__":
 
     # file_name = f"{args.critic_type}_{args.td_type}_{args.adv_type}_{args.n_step}_{args.lambd}_{args.bc_lr_schedule}_{args.env}_{args.seed}"
     # file_name = f"{args.critic_type}_{args.td_type}_{args.adv_type}_{args.n_step}_{args.lambd}_{args.bc_lr_schedule}_{args.iter}_{args.bc_eval_steps}_scale={args.scale}_{args.env}_{args.seed}"
-    file_name = f"{args.first_eval_steps}_{args.iter}_{args.bc_eval_steps}_{args.env}_{args.seed}"
+    file_name = f"{args.td_type}_{args.adv_type}_nstep={args.n_step}_{args.first_eval_steps}_{args.iter}_{args.bc_eval_steps}_{args.env}_{args.seed}"
     print("---------------------------------------")
     print(f"Policy: {args.policy}, Env: {args.env}, Seed: {args.seed}")
     print("---------------------------------------")

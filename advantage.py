@@ -121,7 +121,7 @@ class Advantage(nn.Module):
 			r = min(l+batch_size, self.replay_buffer.size)
 			data = self.replay_buffer.sample_by_ind(list(range(l, r)))
 			state, next_state = data[0], data[2]
-			v0 = self.get_value(state) 
+			v0 = self.get_value(state)
 			v1 = self.get_value(next_state)
 			values.append(v0.cpu())
 			next_values.append(v1.cpu())
