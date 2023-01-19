@@ -96,8 +96,11 @@ class ReplayBuffer(object):
 
 
     # use for training
-    def sample(self):
-        ind = self.sampler.sample()
+    def sample(self, uniform=False):
+        if uniform:
+            ind = np.random.randint(self.size, size=self.batch_size)
+        else:
+            ind = self.sampler.sample()    
         return (
             torch.FloatTensor(self.state[ind]).to(self.device),
             torch.FloatTensor(self.action[ind]).to(self.device),
@@ -106,6 +109,7 @@ class ReplayBuffer(object):
             torch.FloatTensor(self.not_done[ind]).to(self.device),
             torch.FloatTensor(self.weights[ind]).to(self.device)
         )
+
     
     
     def convert_D4RL(self, dataset):

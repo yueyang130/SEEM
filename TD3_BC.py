@@ -109,10 +109,13 @@ class TD3_BC(object):
 		return self.actor(state).cpu().data.numpy().flatten()
 
 
-	def train(self, replay_buffer):
+	def train(self, replay_buffer, two_sampler=False):
 		self.total_it += 1
 		# Sample replay buffer 
-		state, action, next_state, reward, not_done, weight = replay_buffer.sample()
+		if two_sampler:
+			state, action, next_state, reward, not_done, weight = replay_buffer.sample(uniform=True)
+		else:
+			state, action, next_state, reward, not_done, weight = replay_buffer.sample()
 
 		with torch.no_grad():
 			# Select action according to policy and add clipped noise
@@ -146,7 +149,8 @@ class TD3_BC(object):
 		# Delayed policy updates
 		actor_infos = {}
 		if self.total_it % self.policy_freq == 0:
-
+			if two_sampler:
+				state, action, next_state, reward, not_done, weight = replay_buffer.sample()
 			# Compute actor loss
 			pi = self.actor(state)
 			Q = self.critic.Q1(state, pi)
