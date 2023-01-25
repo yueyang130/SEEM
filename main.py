@@ -76,6 +76,7 @@ if __name__ == "__main__":
     # rebalance
     parser.add_argument("--base_prob", default=0.0, type=float)
     parser.add_argument("--resample", action="store_true")
+    parser.add_argument("--two_sampler", action="store_true")
     parser.add_argument("--reweight", action="store_true")
     parser.add_argument("--reweight_eval", default=1, type=int)
     parser.add_argument("--reweight_improve", default=1, type=int)
@@ -139,7 +140,7 @@ if __name__ == "__main__":
 
     wandb.init(project="TD3_BC", config={
             "env": args.env, "seed": args.seed, "tag": args.tag,
-            "resample": args.resample, "reweight": args.reweight, "p_base": args.base_prob,
+            "resample": args.resample, "two_sampler": args.two_sampler, "reweight": args.reweight, "p_base": args.base_prob,
             **kwargs
             })
 
@@ -190,7 +191,7 @@ if __name__ == "__main__":
     # time0 = time.time()
     evaluations = []
     for t in range(int(args.max_timesteps)):
-        infos = policy.train(replay_buffer)
+        infos = policy.train(replay_buffer, args.two_sampler)
         if (t + 1) % args.log_freq == 0:
             for k, v in infos.items():
                 wandb.log({f'train/{k}': v}, step=t+1)
