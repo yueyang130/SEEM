@@ -265,6 +265,165 @@ class DiffusionQL(Algo):
     return getattr(self, f"_train_step_{self.config.loss_type.lower()}"
                   )(train_states, tgt_params, rng, batch, policy_tgt_update)
 
+  def _train_step_rainbow(
+    self, train_states, tgt_params, rng, batch, policy_tgt_update=False
+  ):
+    value_loss_fn = self.get_value_loss(batch)
+    diff_loss_fn = self.get_diff_loss(batch)
+
+    def td3_loss_fn(params, tgt_params, rng, pred_astart):
+      observations = batch['observations']
+
+      # Calculate guide loss
+      def fn(key):
+        q = self.qf.apply(params[key], observations, pred_astart)
+        lmbda = self.config.alpha / jax.lax.stop_gradient(jnp.abs(q).mean())
+        policy_loss = -lmbda * q.mean()
+        return lmbda, policy_loss
+
+      lmbda, guide_loss = jax.lax.cond(
+        jax.random.uniform(rng) > 0.5, partial(fn, 'qf1'), partial(fn, 'qf2')
+      )
+      return guide_loss
+
+    def crr_loss_fn(params, tgt_params, rng, pred_astart):
+      observations = batch['observations']
+      actions = batch['actions']
+
+      # Construct the policy distribution
+      action_dist = self.policy_dist.apply(params['policy_dist'], pred_astart)
+      if self.config.crr_fixed_std:
+        action_dist = distrax.MultivariateNormalDiag(
+          pred_astart, jnp.ones_like(pred_astart)
+        )
+
+      # Build action distribution
+      replicated_obs = jnp.broadcast_to(
+        observations, (self.config.sample_actions,) + observations.shape
+      )
+      rng, split_rng = jax.random.split(rng)
+      if self.config.use_pred_astart:
+        vf_actions = action_dist.sample(
+          seed=split_rng, sample_shape=self.config.sample_actions
+        )
+      else:
+        vf_actions = self.policy.apply(
+          params['policy'], split_rng, replicated_obs
+        )
+
+      # Compute the current Q estimates
+      cur_q1 = self.qf.apply(params['qf1'], observations, actions)
+      cur_q2 = self.qf.apply(params['qf2'], observations, actions)
+
+      # Compute values
+      v1 = self.qf.apply(params['qf1'], replicated_obs, vf_actions)
+      v2 = self.qf.apply(params['qf2'], replicated_obs, vf_actions)
+      v = jnp.minimum(v1, v2)
+      q_pred = jnp.minimum(cur_q1, cur_q2)
+      avg_fn = getattr(jnp, self.config.crr_avg_fn)
+      adv = q_pred - avg_fn(v, axis=0)
+      if self.config.crr_fn == 'exp':
+        lmbda = jnp.minimum(
+          self.config.crr_ratio_upper_bound,
+          jnp.exp(adv / self.config.crr_beta)
+        )
+        if self.config.crr_adv_norm:
+          lmbda = jax.nn.softmax(adv / self.config.crr_beta)
+      else:
+        lmbda = jnp.heaviside(adv, 0)
+      lmbda = jax.lax.stop_gradient(lmbda)
+      if self.config.crr_weight_mode == 'elbo':
+        log_prob = -terms['ts_weights'] * terms['mse']
+      elif self.config.crr_weight_mode == 'mle':
+        log_prob = action_dist.log_prob(actions)
+      else:
+        rng, split_rng = jax.random.split(rng)
+        if not self.config.crr_multi_sample_mse:
+          sampled_actions = action_dist.sample(seed=split_rng)
+          log_prob = -((sampled_actions - actions)**2).mean(axis=-1)
+        else:
+          sampled_actions = action_dist.sample(
+            seed=split_rng, sample_shape=self.config.sample_actions
+          )
+          log_prob = -(
+            (sampled_actions - jnp.expand_dims(actions, axis=0))**2
+          ).mean(axis=(0, -1))
+      guide_loss = -jnp.mean(log_prob * lmbda)
+      return guide_loss
+
+    def policy_loss_fn(params, tgt_params, rng):
+
+      rng, split_rng = jax.random.split(rng)
+      diff_loss, _, _, pred_astart = diff_loss_fn(params, split_rng)
+
+      td3_loss = td3_loss_fn(params, tgt_params, rng, pred_astart)
+      crr_loss = crr_loss_fn(params, tgt_params, rng, pred_astart)
+
+      policy_loss = diff_loss + self.config.guide_coef * (td3_loss + crr_loss)
+
+      return (policy_loss,), locals()
+
+    # Calculat q losses and grads
+    params = {key: train_states[key].params for key in self.model_keys}
+    (_, aux_qf), grads_qf = value_and_multi_grad(
+      value_loss_fn, 2, has_aux=True
+    )(params, tgt_params, rng)
+
+    # Calculat policy losses and grads
+    params = {key: train_states[key].params for key in self.model_keys}
+    (_, aux_policy), grads_policy = value_and_multi_grad(
+      policy_loss_fn, 1, has_aux=True
+    )(params, tgt_params, rng)
+
+    # Update qf train states
+    train_states['qf1'] = train_states['qf1'].apply_gradients(
+      grads=grads_qf[0]['qf1']
+    )
+    train_states['qf2'] = train_states['qf2'].apply_gradients(
+      grads=grads_qf[1]['qf2']
+    )
+
+    # Update policy train states
+    train_states['policy'] = train_states['policy'].apply_gradients(
+      grads=grads_policy[0]['policy']
+    )
+
+    # Update target parameters
+    if policy_tgt_update:
+      tgt_params['policy'] = update_target_network(
+        train_states['policy'].params, tgt_params['policy'], self.config.tau
+      )
+    tgt_params['qf1'] = update_target_network(
+      train_states['qf1'].params, tgt_params['qf1'], self.config.tau
+    )
+    tgt_params['qf2'] = update_target_network(
+      train_states['qf2'].params, tgt_params['qf2'], self.config.tau
+    )
+
+    metrics = dict(
+      qf_loss=aux_qf['qf_loss'],
+      qf1_loss=aux_qf['qf1_loss'],
+      qf2_loss=aux_qf['qf2_loss'],
+      cur_q1=aux_qf['cur_q1'].mean(),
+      cur_q2=aux_qf['cur_q2'].mean(),
+      tgt_q1=aux_qf['tgt_q1'].mean(),
+      tgt_q2=aux_qf['tgt_q2'].mean(),
+      tgt_q=aux_qf['tgt_q'].mean(),
+      policy_loss=aux_policy['policy_loss'],
+      direct_loss=aux_policy['td3_loss'],
+      indirect_loss=aux_policy['crr_loss'],
+      diff_loss=aux_policy['diff_loss'],
+      # lmbda=aux_policy['lmbda'].mean(),
+      qf1_grad_norm=optax.global_norm(grads_qf[0]['qf1']),
+      qf2_grad_norm=optax.global_norm(grads_qf[1]['qf2']),
+      policy_grad_norm=optax.global_norm(grads_policy[0]['policy']),
+      qf1_weight_norm=optax.global_norm(train_states['qf1'].params),
+      qf2_weight_norm=optax.global_norm(train_states['qf2'].params),
+      policy_weight_norm=optax.global_norm(train_states['policy'].params),
+    )
+
+    return train_states, tgt_params, metrics
+
   def _train_step_td3(
     self, train_states, tgt_params, rng, batch, policy_tgt_update=False
   ):

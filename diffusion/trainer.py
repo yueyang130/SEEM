@@ -350,7 +350,8 @@ class DiffusionTrainer(MFTrainer):
 
     logging_configs = self._cfgs.logging
     logging_configs["project"] = f"{self._cfgs.algo}-{env_name_high}-" + \
-      f"{dataset_name_abbr}-{self._cfgs.algo_cfg.loss_type}"
+      f"{dataset_name_abbr}-td3crr"
+    # f"{dataset_name_abbr}-{self._cfgs.algo_cfg.loss_type}"
     wandb_logger = WandBLogger(
       config=logging_configs, variant=self._variant, env_name=env_name_full
     )
