@@ -259,7 +259,7 @@ class DiffusionQL(Algo):
   def _train_step(
     self, train_states, tgt_params, rng, batch, policy_tgt_update=False
   ):
-    if self.config.loss_type not in ['TD3', 'CRR']:
+    if self.config.loss_type not in ['TD3', 'CRR', 'Rainbow']:
       raise NotImplementedError
 
     return getattr(self, f"_train_step_{self.config.loss_type.lower()}"
