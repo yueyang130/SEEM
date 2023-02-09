@@ -2,9 +2,11 @@
 __pycache__/
 *.py[cod]
 *$py.class
-
+*.tar.gz
+sweep.sh
 # C extensions
 *.so
+ckpts
 
 # Distribution / packaging
 .Python

@@ -49,7 +49,7 @@ FLAGS_DEF = define_flags_with_default(
   policy_log_std_multiplier=1.0,
   policy_log_std_offset=-1.0,
   algo_cfg=DiffusionQL.get_default_config(),
-  n_epochs=2000,
+  n_epochs=1000,
   n_train_step_per_epoch=1000,
   eval_period=10,
   eval_n_trajs=10,
@@ -209,7 +209,7 @@ class DiffusionTrainer(MFTrainer):
   def train(self):
     self._setup()
 
-    act_methods = self._cfgs.act_method.split('-')
+    act_methods = self._cfgs.act_method.split('-')  # ['']
     viskit_metrics = {}
     recent_returns = {method: deque(maxlen=10) for method in act_methods}
     best_returns = {method: -float('inf') for method in act_methods}

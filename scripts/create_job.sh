@@ -39,6 +39,7 @@ COMMAND="${*:1}"
 ESCAPED_COMMAND=$(printf '%s\n' "$COMMAND" | sed -e 's/[\/&]/\\&/g')
 GROUP_ID=$(id -g)
 # WANDB_API_KEY="79a3a5ffa9a9cf664fb64c9eaa2b898ad0915964"
+WANDB_API_KEY="85f6f61fb5d177921676661ec9935dc23efde92b"
 
 CPU="${CPU:-8}"
 GPU="${GPU:-1}"

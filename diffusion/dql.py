@@ -202,12 +202,14 @@ class DiffusionQL(Algo):
       qf2_loss = mse_loss(cur_q2, tgt_q)
 
       if self.config.use_expectile:
-        diff1 = cur_q1 - tgt_q
+        # diff1 = cur_q1 - tgt_q
+        diff1 = tgt_q - cur_q1
         exp_w1 = jnp.where(
           diff1 > 0, self.config.exp_tau, 1 - self.config.exp_tau
         )
         qf1_loss = (exp_w1 * (diff1**2)).mean()
-        diff2 = cur_q2 - tgt_q
+        # diff2 = cur_q2 - tgt_q
+        diff2 = tgt_q - cur_q2
         exp_w2 = jnp.where(
           diff2 > 0, self.config.exp_tau, 1 - self.config.exp_tau
         )
