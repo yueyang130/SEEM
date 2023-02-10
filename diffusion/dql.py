@@ -49,7 +49,7 @@ class DiffusionQL(Algo):
 
     cfg.loss_type = 'TD3'
 
-    # CRR-related hps
+    # CRR/IQL-related hps
     cfg.use_expectile = False
     cfg.exp_tau = 0.7
     cfg.sample_actions = 20
@@ -279,7 +279,7 @@ class DiffusionQL(Algo):
       # Calculate guide loss
       def fn(key):
         q = self.qf.apply(params[key], observations, pred_astart)
-        lmbda = self.config.alpha / jax.lax.stop_gradient(jnp.abs(q).mean())
+        lmbda = 1 / jax.lax.stop_gradient(jnp.abs(q).mean())
         policy_loss = -lmbda * q.mean()
         return lmbda, policy_loss
 
@@ -288,7 +288,7 @@ class DiffusionQL(Algo):
       )
       return guide_loss
 
-    def crr_loss_fn(params, tgt_params, rng, pred_astart):
+    def crr_loss_fn(params, tgt_params, rng, pred_astart, terms):
       observations = batch['observations']
       actions = batch['actions']
 
@@ -356,12 +356,12 @@ class DiffusionQL(Algo):
     def policy_loss_fn(params, tgt_params, rng):
 
       rng, split_rng = jax.random.split(rng)
-      diff_loss, _, _, pred_astart = diff_loss_fn(params, split_rng)
-
+      diff_loss, terms, ts, pred_astart = diff_loss_fn(params, split_rng)
       td3_loss = td3_loss_fn(params, tgt_params, rng, pred_astart)
-      crr_loss = crr_loss_fn(params, tgt_params, rng, pred_astart)
+      crr_loss = crr_loss_fn(params, tgt_params, rng, pred_astart, terms)
 
-      policy_loss = diff_loss + self.config.guide_coef * (td3_loss + crr_loss)
+      policy_loss = self.config.diff_coef * diff_loss + \
+            self.config.guide_coef * crr_loss + self.config.alpha * td3_loss
 
       return (policy_loss,), locals()
 
