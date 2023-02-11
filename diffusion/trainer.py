@@ -324,6 +324,7 @@ class DiffusionTrainer(MFTrainer):
       to_arch(self._cfgs.qf_arch),
       use_layer_norm=self._cfgs.qf_layer_norm,
       act=self._act_fn,
+      orthogonal_init=self._cfgs.orthogonal_init,
     )
     return qf
   
@@ -333,6 +334,7 @@ class DiffusionTrainer(MFTrainer):
       to_arch(self._cfgs.qf_arch),
       use_layer_norm=self._cfgs.qf_layer_norm,
       act=self._act_fn,
+      orthogonal_init=self._cfgs.orthogonal_init,
     )
     return vf
 

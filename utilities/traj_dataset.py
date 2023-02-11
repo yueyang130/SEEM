@@ -137,7 +137,7 @@ def get_traj_dataset(env, sorting=True, norm_reward=False):
   )
   if sorting:
     trajs.sort(key=compute_returns)
-  
+
   if norm_reward:
     returns = [compute_returns(traj) for traj in trajs]
     norm = (max(returns) - min(returns)) / 1000
@@ -155,7 +155,9 @@ def nstep_reward_prefix(rewards, nstep=5, gamma=0.9):
   return nstep_rewards
 
 
-def get_nstep_dataset(env, nstep=5, gamma=0.9, sorting=True, norm_reward=False):
+def get_nstep_dataset(
+  env, nstep=5, gamma=0.9, sorting=True, norm_reward=False
+):
   gammas = np.array([gamma**i for i in range(nstep)])
   trajs, raw_dataset = get_traj_dataset(env, sorting, norm_reward)
 

@@ -13,8 +13,8 @@
 # limitations under the License.
 import absl.app
 
-from experiments.mf_trainer import MFTrainer
 from experiments.args import FLAGS_DEF
+from experiments.mf_trainer import MFTrainer
 
 
 def main(argv):

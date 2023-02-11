@@ -19,6 +19,7 @@ GUIDE_COEF="${GUIDE_COEF:-1.0}"
 NORM_REW="${NORM_REW:-False}"
 LR_DECAY="${LR_DECAY:-True}"
 FIXED_STD="${FIXED_STD:-True}"
+ORTHOG_INIT="${ORTHOG_INIT:-False}"
 
 if [ "$SAMPLE_METHOD" = "ddpm" ];
 then
@@ -32,6 +33,7 @@ fi
 
 if [ "$LOSS_TYPE" = "IQL" ];
 then
+  ORTHOG_INIT=True
   if [ "TASK" = 'antmaze' ];
   then
     NORM_REW=False
@@ -45,7 +47,7 @@ then
   ADV_NORM=True
 fi
 
-BASE_CMD="python -m diffusion.trainer --logging.output_dir=./experiment_output --logging.online --algo=${ALGO} --obs_norm=${OBS_NORM} --algo_cfg.loss_type=${LOSS_TYPE} --sample_method=${SAMPLE_METHOD} --algo_cfg.crr_avg_fn=${AVG_FN} --algo_cfg.crr_fn=${CRR_FN} --algo_cfg.adv_norm=${ADV_NORM} --qf_layer_norm=${QF_LAYER_NORM} --policy_layer_norm=${POLICY_LAYER_NORM} --algo_cfg.num_timesteps=${NUM_T} --algo_cfg.guide_coef=${GUIDE_COEF} --norm_reward=${NORM_REW} --algo_cfg.lr_decay=${LR_DECAY} --algo_cfg.fixed_std=${FIXED_STD}"
+BASE_CMD="python -m diffusion.trainer --logging.output_dir=./experiment_output --logging.online --algo=${ALGO} --obs_norm=${OBS_NORM} --algo_cfg.loss_type=${LOSS_TYPE} --sample_method=${SAMPLE_METHOD} --algo_cfg.crr_avg_fn=${AVG_FN} --algo_cfg.crr_fn=${CRR_FN} --algo_cfg.adv_norm=${ADV_NORM} --qf_layer_norm=${QF_LAYER_NORM} --policy_layer_norm=${POLICY_LAYER_NORM} --algo_cfg.num_timesteps=${NUM_T} --algo_cfg.guide_coef=${GUIDE_COEF} --norm_reward=${NORM_REW} --algo_cfg.lr_decay=${LR_DECAY} --algo_cfg.fixed_std=${FIXED_STD} --orthogonal_init=${ORTHOG_INIT}"
 
 for (( i=1; i<=${RUNS}; i++ ))
 do

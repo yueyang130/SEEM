@@ -124,7 +124,9 @@ def get_d4rl_dataset(env, nstep=1, gamma=0.9, norm_reward=False):
   #   dataset = d4rl.qlearning_dataset(env)
   # else:
   # Always sort the dataset according to trajectory return
-  dataset = get_nstep_dataset(env, nstep, gamma, sorting=True, norm_reward=norm_reward)
+  dataset = get_nstep_dataset(
+    env, nstep, gamma, sorting=True, norm_reward=norm_reward
+  )
 
   return dict(
     observations=dataset["observations"],

@@ -196,6 +196,7 @@ class Critic(nn.Module):
   arch: Tuple = (256, 256, 256)
   act: callable = mish
   use_layer_norm: bool = False
+  orthogonal_init: bool = False
 
   @nn.compact
   @multiple_action_q_function
@@ -203,20 +204,26 @@ class Critic(nn.Module):
     x = jnp.concatenate([observations, actions], axis=-1)
 
     for feat in self.arch:
-      x = nn.Dense(
-        feat,
-        kernel_init=jax.nn.initializers.orthogonal(jnp.sqrt(2.0)),
-        bias_init=jax.nn.initializers.zeros,
-      )(x)
+      if self.orthogonal_init:
+        x = nn.Dense(
+          feat,
+          kernel_init=jax.nn.initializers.orthogonal(jnp.sqrt(2.0)),
+          bias_init=jax.nn.initializers.zeros,
+        )(x)
+      else:
+        x = nn.Dense(feat)(x)
       if self.use_layer_norm:
         x = nn.LayerNorm()(x)
       x = self.act(x)
 
-    x = nn.Dense(
-      1,
-      kernel_init=jax.nn.initializers.orthogonal(jnp.sqrt(2.0)),
-      bias_init=jax.nn.initializers.zeros,
-    )(x)
+    if self.orthogonal_init:
+      x = nn.Dense(
+        1,
+        kernel_init=jax.nn.initializers.orthogonal(jnp.sqrt(2.0)),
+        bias_init=jax.nn.initializers.zeros,
+      )(x)
+    else:
+      x = nn.Dense(1)(x)
     return jnp.squeeze(x, -1)
 
   @property
@@ -248,26 +255,33 @@ class Value(nn.Module):
   arch: Tuple = (256, 256, 256)
   act: callable = mish
   use_layer_norm: bool = False
+  orthogonal_init: bool = False
 
   @nn.compact
   def __call__(self, observations):
     x = observations
 
     for feat in self.arch:
-      x = nn.Dense(
-        feat,
-        kernel_init=jax.nn.initializers.orthogonal(jnp.sqrt(2.0)),
-        bias_init=jax.nn.initializers.zeros,
-      )(x)
+      if self.orthogonal_init:
+        x = nn.Dense(
+          feat,
+          kernel_init=jax.nn.initializers.orthogonal(jnp.sqrt(2.0)),
+          bias_init=jax.nn.initializers.zeros,
+        )(x)
+      else:
+        x = nn.Dense(feat)(x)
       if self.use_layer_norm:
         x = nn.LayerNorm()(x)
       x = self.act(x)
 
-    x = nn.Dense(
-      1,
-      kernel_init=jax.nn.initializers.orthogonal(jnp.sqrt(2.0)),
-      bias_init=jax.nn.initializers.zeros,
-    )(x)
+    if self.orthogonal_init:
+      x = nn.Dense(
+        1,
+        kernel_init=jax.nn.initializers.orthogonal(jnp.sqrt(2.0)),
+        bias_init=jax.nn.initializers.zeros,
+      )(x)
+    else:
+      x = nn.Dense(1)(x)
     return jnp.squeeze(x, -1)
 
   @property
