@@ -50,16 +50,16 @@ class DiffusionQL(Algo):
     cfg.loss_type = 'TD3'
     cfg.use_expectile = False  # CRR or IQL
 
+    cfg.adv_norm = False
     # CRR-related hps
     cfg.sample_actions = 20
     cfg.crr_ratio_upper_bound = 20
     cfg.crr_beta = 1.0
     cfg.crr_weight_mode = 'mle'
-    cfg.crr_fixed_std = True
+    cfg.fixed_std = True
     cfg.crr_multi_sample_mse = False
     cfg.crr_avg_fn = 'mean'
     cfg.crr_fn = 'exp'
-    cfg.crr_adv_norm = False
 
     # IQL-related hps
     cfg.expectile = 0.7
@@ -526,8 +526,11 @@ class DiffusionQL(Algo):
       diff_loss, terms, ts, pred_astart = diff_loss_fn(params, split_rng)
 
       # Construct the policy distribution
-      action_dist = self.policy_dist.apply(params['policy_dist'], pred_astart)
-      if self.config.crr_fixed_std:
+      action_dist = self.policy_dist.apply(
+        params['policy_dist'],
+        pred_astart
+      )
+      if self.config.fixed_std:
         action_dist = distrax.MultivariateNormalDiag(
           pred_astart, jnp.ones_like(pred_astart)
         )
@@ -562,7 +565,7 @@ class DiffusionQL(Algo):
           self.config.crr_ratio_upper_bound,
           jnp.exp(adv / self.config.crr_beta)
         )
-        if self.config.crr_adv_norm:
+        if self.config.adv_norm:
           lmbda = jax.nn.softmax(adv / self.config.crr_beta)
       else:
         lmbda = jnp.heaviside(adv, 0)
@@ -709,11 +712,16 @@ class DiffusionQL(Algo):
       exp_a = jnp.exp((q_pred - v_pred) * self.config.awr_temperature)
       exp_a = jnp.minimum(exp_a, 100.0)
 
+      if self.config.adv_norm:
+        exp_a = jax.nn.softmax(
+          (q_pred - v_pred) * self.config.awr_temperature
+        )
+
       action_dist = self.policy_dist.apply(
         params['policy_dist'],
         pred_astart
       )
-      if self.config.crr_fixed_std:
+      if self.config.fixed_std:
         action_dist = distrax.MultivariateNormalDiag(
           pred_astart, jnp.ones_like(pred_astart)
         )
@@ -761,7 +769,7 @@ class DiffusionQL(Algo):
       grads=qf_grads[0]['qf1']
     )
     train_states['qf2'] = train_states['qf2'].apply_gradients(
-      grads=qf_grads[0]['qf2']
+      grads=qf_grads[1]['qf2']
     )
 
     # Update target parameters

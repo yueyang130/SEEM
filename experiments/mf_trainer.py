@@ -197,12 +197,16 @@ class MFTrainer(Trainer):
       gym.make(self._cfgs.env), self._cfgs.max_traj_length
     )
 
+    norm_reward = self._cfgs.norm_reward
+    if 'antmaze' in self._cfgs.env:
+      norm_reward = False
+
     dataset = get_d4rl_dataset(
       eval_sampler.env,
       self._cfgs.algo_cfg.nstep,
       self._cfgs.algo_cfg.discount,
+      norm_reward=norm_reward,
     )
-
     dataset["rewards"] = dataset[
       "rewards"] * self._cfgs.reward_scale + self._cfgs.reward_bias
     dataset["actions"] = np.clip(
@@ -217,7 +221,10 @@ class MFTrainer(Trainer):
       norm_obs(dataset, self._obs_mean, self._obs_std, self._obs_clip)
 
       if self._env == ENV.Antmaze:
-        dataset["rewards"] = (dataset["rewards"] - 0.5) * 4
+        if self._cfgs.algo_cfg.loss_type == 'IQL':
+          dataset["rewards"] -= 1
+        else:
+          dataset["rewards"] = (dataset["rewards"] - 0.5) * 4
       else:
         min_r, max_r = np.min(dataset["rewards"]), np.max(dataset["rewards"])
         dataset["rewards"] = (dataset["rewards"] - min_r) / (max_r - min_r)

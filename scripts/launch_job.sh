@@ -15,6 +15,10 @@ WEIGHT_MODE="${WEIGHT_MODE:-mle}"
 AVG_FN="${AVG_FN:-mean}"
 CRR_FN="${CRR_FN:-exp}"
 ADV_NORM="${ADV_NORM:-False}"
+GUIDE_COEF="${GUIDE_COEF:-1.0}"
+NORM_REW="${NORM_REW:-False}"
+LR_DECAY="${LR_DECAY:-True}"
+FIXED_STD="${FIXED_STD:-True}"
 
 if [ "$SAMPLE_METHOD" = "ddpm" ];
 then
@@ -26,7 +30,22 @@ else
   echo "sample method not implemented"
 fi
 
-BASE_CMD="python -m diffusion.trainer --logging.output_dir=./experiment_output --logging.online --algo=${ALGO} --obs_norm=${OBS_NORM} --algo_cfg.loss_type=${LOSS_TYPE} --sample_method=${SAMPLE_METHOD} --algo_cfg.crr_avg_fn=${AVG_FN} --algo_cfg.crr_fn=${CRR_FN} --algo_cfg.crr_adv_norm=${ADV_NORM} --qf_layer_norm=${QF_LAYER_NORM} --policy_layer_norm=${POLICY_LAYER_NORM} --algo_cfg.num_timesteps=${NUM_T}"
+if [ "$LOSS_TYPE" = "IQL" ];
+then
+  if [ "TASK" = 'antmaze' ];
+  then
+    NORM_REW=False
+  else
+    NORM_REW=True
+  fi
+fi
+
+if [ "$LOSS_TYPE" = "CRR" ];
+then
+  ADV_NORM=True
+fi
+
+BASE_CMD="python -m diffusion.trainer --logging.output_dir=./experiment_output --logging.online --algo=${ALGO} --obs_norm=${OBS_NORM} --algo_cfg.loss_type=${LOSS_TYPE} --sample_method=${SAMPLE_METHOD} --algo_cfg.crr_avg_fn=${AVG_FN} --algo_cfg.crr_fn=${CRR_FN} --algo_cfg.adv_norm=${ADV_NORM} --qf_layer_norm=${QF_LAYER_NORM} --policy_layer_norm=${POLICY_LAYER_NORM} --algo_cfg.num_timesteps=${NUM_T} --algo_cfg.guide_coef=${GUIDE_COEF} --norm_reward=${NORM_REW} --algo_cfg.lr_decay=${LR_DECAY} --algo_cfg.fixed_std=${FIXED_STD}"
 
 for (( i=1; i<=${RUNS}; i++ ))
 do
@@ -50,21 +69,21 @@ elif [ "$TASK" = "rl_unplugged" ]; then
 elif [ "$TASK" = "antmaze" ]; then
   for level in umaze-v0 umaze-diverse-v0 medium-play-v0 medium-diverse-v0 large-play-v0 large-diverse-v0
   do
-    PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --seed=${i}  --env=antmaze-${level} --eval_n_trajs=100 --eval_period=50 --n_epochs=2000 --algo_cfg.max_q_backup=True"
+    PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --seed=${i}  --env=antmaze-${level} --eval_n_trajs=100 --eval_period=50 --n_epochs=2000 --algo_cfg.max_q_backup=True --algo_cfg.expectile=0.9 --algo_cfg.awr_temperature=10.0"
     sleep 1
   done
 elif [ "$TASK" = "kitchen" ]; then
   for level in complete-v0 partial-v0 mixed-v0
   do
-    PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --seed=${i} --env=kitchen-${level} --n_epochs 1000"
+    PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --seed=${i} --env=kitchen-${level} --n_epochs 1000 --algo_cfg.awr_temperature=0.5"
     sleep 1
   done
 elif [ "$TASK" = "adroit" ]; then
-  for scenario in pen hammer door relocate
+  for scenario in pen
   do
     for tp in human cloned
     do
-      PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --algo=${ALGO} --seed=${i} --env=${scenario}-${tp}-v0 --n_epochs 1000"
+      PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --algo=${ALGO} --seed=${i} --env=${scenario}-${tp}-v1 --n_epochs 1000 --algo_cfg.awr_temperature=0.5"
       sleep 1
     done
   done

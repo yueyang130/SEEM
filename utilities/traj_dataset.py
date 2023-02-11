@@ -124,7 +124,7 @@ def compute_returns(traj):
   return episode_return
 
 
-def get_traj_dataset(env, sorting=True):
+def get_traj_dataset(env, sorting=True, norm_reward=False):
   env = gym.make(env) if isinstance(env, str) else env
   dataset = D4RLDataset(env)
   trajs = split_into_trajectories(
@@ -137,6 +137,13 @@ def get_traj_dataset(env, sorting=True):
   )
   if sorting:
     trajs.sort(key=compute_returns)
+  
+  if norm_reward:
+    returns = [compute_returns(traj) for traj in trajs]
+    norm = (max(returns) - min(returns)) / 1000
+    for traj in tqdm(trajs):
+      for i, ts in enumerate(traj):
+        traj[i] = ts[:2] + (ts[2] / norm,) + ts[3:]
 
   # NOTE: this raw_dataset is not sorted
   return trajs, dataset.raw_dataset
@@ -148,11 +155,11 @@ def nstep_reward_prefix(rewards, nstep=5, gamma=0.9):
   return nstep_rewards
 
 
-def get_nstep_dataset(env, nstep=5, gamma=0.9, sorting=True):
+def get_nstep_dataset(env, nstep=5, gamma=0.9, sorting=True, norm_reward=False):
   gammas = np.array([gamma**i for i in range(nstep)])
-  trajs, raw_dataset = get_traj_dataset(env, sorting)
+  trajs, raw_dataset = get_traj_dataset(env, sorting, norm_reward)
 
-  obss, acts, terms, next_obss, nstep_rews = [], [], [], [], []
+  obss, acts, terms, next_obss, nstep_rews, dones_float = [], [], [], [], [], []
   for traj in trajs:
     L = len(traj)
     rewards = np.array([ts[2] for ts in traj])
@@ -162,6 +169,7 @@ def get_nstep_dataset(env, nstep=5, gamma=0.9, sorting=True):
     obss.extend([traj[i][0] for i in range(L)])
     acts.extend([traj[i][1] for i in range(L)])
     terms.extend([bool(1 - traj[i][3]) for i in range(L)])
+    dones_float.extend(traj[i][4] for i in range(L))
 
   dataset = {}
   dataset["observations"] = np.stack(obss)
@@ -169,6 +177,7 @@ def get_nstep_dataset(env, nstep=5, gamma=0.9, sorting=True):
   dataset["next_observations"] = np.stack(next_obss)
   dataset["rewards"] = np.concatenate(nstep_rews)
   dataset["terminals"] = np.stack(terms)
+  dataset["dones_float"] = np.stack(dones_float)
   raw_shape = raw_dataset["next_observations"].shape
 
   assert len(dataset["rewards"]) == len(raw_dataset["rewards"])

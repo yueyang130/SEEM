@@ -194,7 +194,6 @@ class Critic(nn.Module):
   observation_dim: int
   action_dim: int
   arch: Tuple = (256, 256, 256)
-  use_layer_norm: bool = False
   act: callable = mish
   use_layer_norm: bool = False
 
@@ -204,12 +203,20 @@ class Critic(nn.Module):
     x = jnp.concatenate([observations, actions], axis=-1)
 
     for feat in self.arch:
-      x = nn.Dense(feat)(x)
+      x = nn.Dense(
+        feat,
+        kernel_init=jax.nn.initializers.orthogonal(jnp.sqrt(2.0)),
+        bias_init=jax.nn.initializers.zeros,
+      )(x)
       if self.use_layer_norm:
         x = nn.LayerNorm()(x)
       x = self.act(x)
 
-    x = nn.Dense(1)(x)
+    x = nn.Dense(
+      1,
+      kernel_init=jax.nn.initializers.orthogonal(jnp.sqrt(2.0)),
+      bias_init=jax.nn.initializers.zeros,
+    )(x)
     return jnp.squeeze(x, -1)
 
   @property
@@ -247,12 +254,20 @@ class Value(nn.Module):
     x = observations
 
     for feat in self.arch:
-      x = nn.Dense(feat)(x)
+      x = nn.Dense(
+        feat,
+        kernel_init=jax.nn.initializers.orthogonal(jnp.sqrt(2.0)),
+        bias_init=jax.nn.initializers.zeros,
+      )(x)
       if self.use_layer_norm:
         x = nn.LayerNorm()(x)
       x = self.act(x)
 
-    x = nn.Dense(1)(x)
+    x = nn.Dense(
+      1,
+      kernel_init=jax.nn.initializers.orthogonal(jnp.sqrt(2.0)),
+      bias_init=jax.nn.initializers.zeros,
+    )(x)
     return jnp.squeeze(x, -1)
 
   @property

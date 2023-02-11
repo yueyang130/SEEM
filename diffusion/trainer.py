@@ -61,6 +61,7 @@ FLAGS_DEF = define_flags_with_default(
   act_method='',
   sample_method='ddpm',
   policy_temp=1.0,
+  norm_reward=False,
 )
 
 
@@ -193,6 +194,13 @@ class DiffusionTrainer(MFTrainer):
     self._cfgs.algo_cfg.lr_decay_steps = \
       self._cfgs.n_epochs * self._cfgs.n_train_step_per_epoch
 
+    if self._cfgs.activation == 'mish':
+      act_fn = lambda x: x * jnp.tanh(jax.nn.softplus(x))
+    else:
+      act_fn = getattr(jax.nn, self._cfgs.activation)
+    
+    self._act_fn = act_fn
+
     self._variant = get_user_flags(self._cfgs, FLAGS_DEF)
     for k, v in self._cfgs.algo_cfg.items():
       self._variant[f"algo.{k}"] = v
@@ -315,6 +323,7 @@ class DiffusionTrainer(MFTrainer):
       self._action_dim,
       to_arch(self._cfgs.qf_arch),
       use_layer_norm=self._cfgs.qf_layer_norm,
+      act=self._act_fn,
     )
     return qf
   
@@ -323,6 +332,7 @@ class DiffusionTrainer(MFTrainer):
       self._observation_dim,
       to_arch(self._cfgs.qf_arch),
       use_layer_norm=self._cfgs.qf_layer_norm,
+      act=self._act_fn,
     )
     return vf
 
