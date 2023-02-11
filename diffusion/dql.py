@@ -48,9 +48,14 @@ class DiffusionQL(Algo):
     cfg.weight_decay = 0.
 
     cfg.loss_type = 'TD3'
+    cfg.use_expectile = False  # CRR or IQL
 
-    # CRR/IQL-related hps
-    cfg.use_expectile = False
+    # IQL-related hps
+    cfg.expectile = 0.7
+    cfg.awr_temperature = 3.0
+    cfg.share_qf = True
+
+    # CRR-related hps
     cfg.exp_tau = 0.7
     cfg.sample_actions = 20
     cfg.crr_ratio_upper_bound = 20
@@ -72,10 +77,11 @@ class DiffusionQL(Algo):
       cfg.update(ConfigDict(updates).copy_and_resolve_references())
     return cfg
 
-  def __init__(self, cfg, policy, qf, policy_dist):
+  def __init__(self, cfg, policy, qf, vf, policy_dist):
     self.config = self.get_default_config(cfg)
     self.policy = policy
     self.qf = qf
+    self.vf = vf
     self.policy_dist = policy_dist
     self.observation_dim = policy.observation_dim
     self.action_dim = policy.action_dim
@@ -134,20 +140,31 @@ class DiffusionQL(Algo):
       jnp.zeros((10, self.action_dim)),
     )
 
+    vf_params = self.vf.init(
+      next_rng(),
+      jnp.zeros((10, self.observation_dim))
+    )
+
     self._train_states['qf1'] = TrainState.create(
       params=qf1_params, tx=get_optimizer(), apply_fn=None
     )
     self._train_states['qf2'] = TrainState.create(
       params=qf2_params, tx=get_optimizer(), apply_fn=None
     )
+    self._train_states['vf'] = TrainState.create(
+      params=vf_params, tx=get_optimizer(), apply_fn=None,
+    )
+
+
     self._tgt_params = deepcopy(
       {
         'policy': policy_params,
         'qf1': qf1_params,
         'qf2': qf2_params,
+        'vf': vf_params,
       }
     )
-    self._model_keys = ('policy', 'qf1', 'qf2', 'policy_dist')
+    self._model_keys = ('policy', 'qf1', 'qf2', 'vf', 'policy_dist')
 
   def get_value_loss(self, batch):
 
@@ -201,19 +218,19 @@ class DiffusionQL(Algo):
       qf1_loss = mse_loss(cur_q1, tgt_q)
       qf2_loss = mse_loss(cur_q2, tgt_q)
 
-      if self.config.use_expectile:
-        # diff1 = cur_q1 - tgt_q
-        diff1 = tgt_q - cur_q1
-        exp_w1 = jnp.where(
-          diff1 > 0, self.config.exp_tau, 1 - self.config.exp_tau
-        )
-        qf1_loss = (exp_w1 * (diff1**2)).mean()
-        # diff2 = cur_q2 - tgt_q
-        diff2 = tgt_q - cur_q2
-        exp_w2 = jnp.where(
-          diff2 > 0, self.config.exp_tau, 1 - self.config.exp_tau
-        )
-        qf2_loss = (exp_w2 * (diff2**2)).mean()
+      # if self.config.use_expectile:
+      #   # diff1 = cur_q1 - tgt_q
+      #   diff1 = tgt_q - cur_q1
+      #   exp_w1 = jnp.where(
+      #     diff1 > 0, self.config.exp_tau, 1 - self.config.exp_tau
+      #   )
+      #   qf1_loss = (exp_w1 * (diff1**2)).mean()
+      #   # diff2 = cur_q2 - tgt_q
+      #   diff2 = tgt_q - cur_q2
+      #   exp_w2 = jnp.where(
+      #     diff2 > 0, self.config.exp_tau, 1 - self.config.exp_tau
+      #   )
+      #   qf2_loss = (exp_w2 * (diff2**2)).mean()
 
       qf_loss = qf1_loss + qf2_loss
       return (qf1_loss, qf2_loss), locals()
