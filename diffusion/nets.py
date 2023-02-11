@@ -214,7 +214,7 @@ class Critic(nn.Module):
 
   @property
   def input_size(self):
-    return self.observation_dim
+    return self.observation_dim + self.action_dim
 
 
 class GaussianPolicy(nn.Module):
@@ -234,3 +234,27 @@ class GaussianPolicy(nn.Module):
     return distrax.MultivariateNormalDiag(
       mean, jnp.exp(log_stds * self.temperature)
     )
+
+
+class Value(nn.Module):
+  observation_dim: int
+  arch: Tuple = (256, 256, 256)
+  act: callable = mish
+  use_layer_norm: bool = False
+
+  @nn.compact
+  def __call__(self, observations):
+    x = observations
+
+    for feat in self.arch:
+      x = nn.Dense(feat)(x)
+      if self.use_layer_norm:
+        x = nn.LayerNorm()(x)
+      x = self.act(x)
+
+    x = nn.Dense(1)(x)
+    return jnp.squeeze(x, -1)
+
+  @property
+  def input_size(self):
+    return self.observation_dim

@@ -21,7 +21,7 @@ from utilities.jax_utils import next_rng, batch_to_jax
 
 from experiments.mf_trainer import MFTrainer
 from diffusion.dql import DiffusionQL
-from diffusion.nets import DiffusionPolicy, Critic, GaussianPolicy
+from diffusion.nets import DiffusionPolicy, Critic, GaussianPolicy, Value
 from diffusion.diffusion import (
   GaussianDiffusion, ModelMeanType, ModelVarType, LossType
 )
@@ -301,11 +301,10 @@ class DiffusionTrainer(MFTrainer):
 
     # setup Q-function
     self._qf = self._setup_qf()
+    self._vf = self._setup_vf()
 
     # setup agent
-    self._agent = self._algo(
-      self._cfgs.algo_cfg, self._policy, self._qf, self._policy_dist
-    )
+    self._agent = self._algo(self._cfgs.algo_cfg, self._policy, self._qf, self._vf, self._policy_dist)
 
     # setup sampler policy
     self._sampler_policy = SamplerPolicy(self._agent.policy, self._agent.qf)
@@ -318,6 +317,14 @@ class DiffusionTrainer(MFTrainer):
       use_layer_norm=self._cfgs.qf_layer_norm,
     )
     return qf
+  
+  def _setup_vf(self):
+    vf = Value(
+      self._observation_dim,
+      to_arch(self._cfgs.qf_arch),
+      use_layer_norm=self._cfgs.qf_layer_norm,
+    )
+    return vf
 
   def _setup_policy(self):
     gd = GaussianDiffusion(

@@ -25,30 +25,29 @@ class IQL(Algo):
     config.use_automatic_entropy_tuning = True
     config.backup_entropy = False
     config.target_entropy = 0.0
-    config.policy_lr = 1e-4
+    config.policy_lr = 3e-4
     config.qf_lr = 3e-4
     config.vf_lr = 3e-4
     config.optimizer_type = 'adam'
     config.soft_target_update_rate = 5e-3
     config.bc_mode = 'mse'  # 'mle'
-    config.bc_weight = 0.
-    config.res_hidden_size = 1024
-    config.head_blocks = 1
     config.expectile = 0.7
     config.awr_temperature = 3.0
     config.loss_type = 'expectile'
+    config.use_scheduler = True
 
     if updates is not None:
       config.update(ConfigDict(updates).copy_and_resolve_references())
     return config
 
-  def __init__(self, config, policy, qf, vf):
+  def __init__(self, config, policy, qf, vf, max_steps):
     self.config = self.get_default_config(config)
     self.policy = policy
     self.qf = qf
     self.vf = vf
     self.observation_dim = policy.input_size
     self.action_dim = policy.action_dim
+    self.max_steps = max_steps
 
     self._train_states = {}
 
@@ -58,12 +57,21 @@ class IQL(Algo):
     }[self.config.optimizer_type]
 
     policy_params = self.policy.init(
-      next_rng(), next_rng(), jnp.zeros((10, self.observation_dim))
+      {
+        'dropout': next_rng(),
+        'params': next_rng()
+      }, next_rng(), jnp.zeros((10, self.observation_dim))
     )
+    policy_optim = optimizer_class(self.config.policy_lr)
+    if self.config.use_scheduler:
+      schedule_fn = optax.cosine_decay_schedule(
+        -self.config.policy_lr, self.max_steps
+      )
+      policy_optim = optax.chain(
+        optax.scale_by_adam(), optax.scale_by_schedule(schedule_fn)
+      )
     self._train_states['policy'] = TrainState.create(
-      params=policy_params,
-      tx=optimizer_class(self.config.policy_lr),
-      apply_fn=None
+      params=policy_params, tx=policy_optim, apply_fn=None
     )
 
     qf1_params = self.qf.init(
@@ -105,7 +113,7 @@ class IQL(Algo):
     self._model_keys = tuple(model_keys)
     self._total_steps = 0
 
-  def train(self, batch):
+  def train(self, batch, update_target_policy):
     self._total_steps += 1
     self._train_states, self._target_qf_params, metrics = self._train_step(
       self._train_states, self._target_qf_params, next_rng(), batch
@@ -152,7 +160,8 @@ class IQL(Algo):
         train_params['policy'],
         observations,
         actions,
-        method=self.policy.log_prob
+        method=self.policy.log_prob,
+        rngs={'dropout': rng}
       )
       awr_loss = -(exp_a * log_probs).mean()
 
@@ -183,6 +192,7 @@ class IQL(Algo):
       grads=value_grads[0]['vf']
     )
 
+    train_params = {key: train_states[key].params for key in self.model_keys}
     (_, aux_policy), policy_grads = value_and_multi_grad(
       awr_loss, 1, has_aux=True
     )(
@@ -192,6 +202,7 @@ class IQL(Algo):
       grads=policy_grads[0]['policy']
     )
 
+    train_params = {key: train_states[key].params for key in self.model_keys}
     (_, aux_qf), qf_grads = value_and_multi_grad(
       critic_loss, 2, has_aux=True
     )(

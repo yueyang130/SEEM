@@ -50,13 +50,7 @@ class DiffusionQL(Algo):
     cfg.loss_type = 'TD3'
     cfg.use_expectile = False  # CRR or IQL
 
-    # IQL-related hps
-    cfg.expectile = 0.7
-    cfg.awr_temperature = 3.0
-    cfg.share_qf = True
-
     # CRR-related hps
-    cfg.exp_tau = 0.7
     cfg.sample_actions = 20
     cfg.crr_ratio_upper_bound = 20
     cfg.crr_beta = 1.0
@@ -66,6 +60,10 @@ class DiffusionQL(Algo):
     cfg.crr_avg_fn = 'mean'
     cfg.crr_fn = 'exp'
     cfg.crr_adv_norm = False
+
+    # IQL-related hps
+    cfg.expectile = 0.7
+    cfg.awr_temperature = 3.0
 
     # for dpm-solver
     cfg.dpm_steps = 15
@@ -154,8 +152,6 @@ class DiffusionQL(Algo):
     self._train_states['vf'] = TrainState.create(
       params=vf_params, tx=get_optimizer(), apply_fn=None,
     )
-
-
     self._tgt_params = deepcopy(
       {
         'policy': policy_params,
@@ -218,20 +214,6 @@ class DiffusionQL(Algo):
       qf1_loss = mse_loss(cur_q1, tgt_q)
       qf2_loss = mse_loss(cur_q2, tgt_q)
 
-      # if self.config.use_expectile:
-      #   # diff1 = cur_q1 - tgt_q
-      #   diff1 = tgt_q - cur_q1
-      #   exp_w1 = jnp.where(
-      #     diff1 > 0, self.config.exp_tau, 1 - self.config.exp_tau
-      #   )
-      #   qf1_loss = (exp_w1 * (diff1**2)).mean()
-      #   # diff2 = cur_q2 - tgt_q
-      #   diff2 = tgt_q - cur_q2
-      #   exp_w2 = jnp.where(
-      #     diff2 > 0, self.config.exp_tau, 1 - self.config.exp_tau
-      #   )
-      #   qf2_loss = (exp_w2 * (diff2**2)).mean()
-
       qf_loss = qf1_loss + qf2_loss
       return (qf1_loss, qf2_loss), locals()
 
@@ -278,7 +260,7 @@ class DiffusionQL(Algo):
   def _train_step(
     self, train_states, tgt_params, rng, batch, policy_tgt_update=False
   ):
-    if self.config.loss_type not in ['TD3', 'CRR', 'Rainbow']:
+    if self.config.loss_type not in ['TD3', 'CRR', 'IQL', 'Rainbow']:
       raise NotImplementedError
 
     return getattr(self, f"_train_step_{self.config.loss_type.lower()}"
@@ -671,6 +653,154 @@ class DiffusionQL(Algo):
       metrics['log_prob'] = aux_policy['log_prob'].mean()
 
     return train_states, tgt_params, metrics
+
+  def _train_step_iql(
+    self, train_states, tgt_params, rng, batch, policy_tgt_update=False
+  ):
+    diff_loss_fn = self.get_diff_loss(batch)
+
+    def value_loss(train_params):
+      observations = batch['observations']
+      actions = batch['actions']
+      q1 = self.qf.apply(tgt_params['qf1'], observations, actions)
+      q2 = self.qf.apply(tgt_params['qf2'], observations, actions)
+      q_pred = jax.lax.stop_gradient(jnp.minimum(q1, q2))
+      v_pred = self.vf.apply(train_params['vf'], observations)
+      diff = q_pred - v_pred
+      expectile_weight = jnp.where(
+        diff > 0,
+        self.config.expectile,
+        1 - self.config.expectile,
+      )
+
+      expectile_loss = (expectile_weight * (diff**2)).mean()
+      return (expectile_loss,), locals()
+
+    def critic_loss(train_params):
+      observations = batch['observations']
+      actions = batch['actions']
+      next_observations = batch['next_observations']
+      rewards = batch['rewards']
+      dones = batch['dones']
+      next_v = self.vf.apply(train_params['vf'], next_observations)
+
+      discount = self.config.discount**self.config.nstep
+      td_target = jax.lax.stop_gradient(
+        rewards + (1 - dones) * discount * next_v
+      )
+
+      q1_pred = self.qf.apply(train_params['qf1'], observations, actions)
+      q2_pred = self.qf.apply(train_params['qf2'], observations, actions)
+      qf1_loss = mse_loss(q1_pred, td_target)
+      qf2_loss = mse_loss(q2_pred, td_target)
+
+      return (qf1_loss, qf2_loss), locals()
+
+    def policy_loss(params, rng):
+      observations = batch['observations']
+      actions = batch['actions']
+ 
+      rng, split_rng = jax.random.split(rng)
+      diff_loss, _, _, pred_astart = diff_loss_fn(params, split_rng)
+      v_pred = self.vf.apply(train_params['vf'], observations)
+      q1 = self.qf.apply(tgt_params['qf1'], observations, actions)
+      q2 = self.qf.apply(tgt_params['qf2'], observations, actions)
+      q_pred = jax.lax.stop_gradient(jnp.minimum(q1, q2))
+      exp_a = jnp.exp((q_pred - v_pred) * self.config.awr_temperature)
+      exp_a = jnp.minimum(exp_a, 100.0)
+
+      action_dist = self.policy_dist.apply(
+        params['policy_dist'],
+        pred_astart
+      )
+      if self.config.crr_fixed_std:
+        action_dist = distrax.MultivariateNormalDiag(
+          pred_astart, jnp.ones_like(pred_astart)
+        )
+      
+      log_probs = action_dist.log_prob(actions)
+      awr_loss = -(exp_a * log_probs).mean()
+      guide_loss = awr_loss
+
+      policy_loss = self.config.diff_coef * diff_loss + self.config.guide_coef * guide_loss
+      losses = {'policy': policy_loss, 'policy_dist': policy_loss}
+
+      return tuple(losses[key] for key in losses.keys()), locals()
+
+    train_params = {key: train_states[key].params for key in self.model_keys}
+    (_, aux_value), value_grads = value_and_multi_grad(
+      value_loss, 1, has_aux=True
+    )(
+      train_params
+    )
+    train_states['vf'] = train_states['vf'].apply_gradients(
+      grads=value_grads[0]['vf']
+    )
+
+    rng, split_rng = jax.random.split(rng)
+    train_params = {key: train_states[key].params for key in self.model_keys}
+    (_, aux_policy), policy_grads = value_and_multi_grad(
+      policy_loss, 2, has_aux=True
+    )(
+      train_params, split_rng
+    )
+    train_states['policy'] = train_states['policy'].apply_gradients(
+      grads=policy_grads[0]['policy']
+    )
+    train_states['policy_dist'] = train_states['policy_dist'].apply_gradients(
+      grads=policy_grads[1]['policy_dist']
+    )
+
+    train_params = {key: train_states[key].params for key in self.model_keys}
+    (_, aux_qf), qf_grads = value_and_multi_grad(
+      critic_loss, 2, has_aux=True
+    )(
+      train_params
+    )
+    train_states['qf1'] = train_states['qf1'].apply_gradients(
+      grads=qf_grads[0]['qf1']
+    )
+    train_states['qf2'] = train_states['qf2'].apply_gradients(
+      grads=qf_grads[0]['qf2']
+    )
+
+    # Update target parameters
+    if policy_tgt_update:
+      tgt_params['policy'] = update_target_network(
+        train_states['policy'].params, tgt_params['policy'], self.config.tau
+      )
+    tgt_params['qf1'] = update_target_network(
+      train_states['qf1'].params, tgt_params['qf1'], self.config.tau
+    )
+    tgt_params['qf2'] = update_target_network(
+      train_states['qf2'].params, tgt_params['qf2'], self.config.tau
+    )
+
+    metrics = dict(
+      vf_loss=aux_value['expectile_loss'].mean(),
+      vf_adv=aux_value['diff'].mean(),
+      vf_pred=aux_value['v_pred'].mean(),
+      next_v=aux_qf['next_v'].mean(),
+      qf1_loss=aux_qf['qf1_loss'],
+      qf2_loss=aux_qf['qf2_loss'],
+      cur_q1=aux_qf['q1_pred'].mean(),
+      cur_q2=aux_qf['q2_pred'].mean(),
+      tgt_q=aux_qf['td_target'].mean(),
+      policy_loss=aux_policy['policy_loss'],
+      guide_loss=aux_policy['guide_loss'],
+      diff_loss=aux_policy['diff_loss'],
+      vf_grad=optax.global_norm(value_grads[0]['vf']),
+      qf1_grad_norm=optax.global_norm(qf_grads[0]['qf1']),
+      qf2_grad_norm=optax.global_norm(qf_grads[1]['qf2']),
+      policy_grad_norm=optax.global_norm(policy_grads[0]['policy']),
+      vf_weight_norm=optax.global_norm(train_states['vf'].params),
+      qf1_weight_norm=optax.global_norm(train_states['qf1'].params),
+      qf2_weight_norm=optax.global_norm(train_states['qf2'].params),
+      policy_weight_norm=optax.global_norm(train_states['policy'].params),
+    )
+
+    return train_states, tgt_params, metrics
+
 
   def train(self, batch):
     self._total_steps += 1
