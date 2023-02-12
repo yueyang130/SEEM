@@ -2,6 +2,7 @@
 
 TASK="${TASK:-gym}" # d4rl / antmaze / rl_unplugged
 PRIORITY="${PRIORITY:-low}"
+NS="${NS:-offbench}"
 ALGO="${ALGO:-DiffQL}"
 RUNS="${RUNS:-1}" # d4rl / antmaze / rl_unplugged
 DBMODE="${DBMODE:-mcmc}"
@@ -10,7 +11,7 @@ QF_LAYER_NORM="${QF_LAYER_NORM:-False}"
 POLICY_LAYER_NORM="${POLICY_LAYER_NORM:-False}"
 OBS_NORM="${OBS_NORM:-False}"
 LOSS_TYPE="${LOSS_TYPE:-TD3}"
-SAMPLE_METHOD="${SAMPLE_METHOD:-ddpm}"
+SAMPLE_METHOD="${SAMPLE_METHOD:-dpm}"
 WEIGHT_MODE="${WEIGHT_MODE:-mle}"
 AVG_FN="${AVG_FN:-mean}"
 CRR_FN="${CRR_FN:-exp}"
@@ -33,7 +34,7 @@ fi
 
 if [ "$LOSS_TYPE" = "IQL" ];
 then
-  ORTHOG_INIT=True
+  # ORTHOG_INIT=True
   if [ "TASK" = 'antmaze' ];
   then
     NORM_REW=False
