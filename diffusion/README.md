@@ -27,7 +27,25 @@ TASK=antmaze PRIORITY=high LOSS_TYPE=IQL FIXED_STD=False bash scripts/launch_job
 
 To run crr+td3
 ```bash
-python -m diffusion.trainer  --logging.output_dir=./ckpts --algo=DiffQL --obs_norm=False --algo_cfg.loss_type=Rainbow --sample_method=dpm --algo_cfg.crr_avg_fn=mean --algo_cfg.crr_fn=exp --algo_cfg.crr_adv_norm=False --qf_layer_norm=False --policy_layer_norm=False --algo_cfg.num_timesteps=1000 --algo=DiffQL --seed=1 --env=walker2d-medium-v2  --algo_cfg.crr_weight_mode=mle --algo_cfg.diff_coef=1.0
+python -m diffusion.trainer  --logging.output_dir=./ckpts --algo=DiffQL --obs_norm=False --algo_cfg.loss_type=Rainbow --sample_method=dpm --algo_cfg.crr_avg_fn=mean --algo_cfg.crr_fn=exp --algo_cfg.crr_adv_norm=False --qf_layer_norm=False --policy_layer_norm=False --algo_cfg.num_timesteps=1000 --seed=1 --env=walker2d-medium-v2  --algo_cfg.crr_weight_mode=mle --algo_cfg.diff_coef=1.0
+```
+
+
+To run iql+td3
+```bash
+
 ```
 
 DEBUG Docker `NS=offbench make run cmd="sleep 100000"`
+
+# iql
+NOTES=diff-iql TASK=gym ALPHA=0 GUIDE_COEF=1.0 bash sweep.sh
+NOTES=diff-iql TASK=antmaze ALPHA=0 GUIDE_COEF=1.0 bash sweep.sh
+
+# iql+td3
+NOTES=diff-iql+td3 TASK=gym ALPHA=0.25 GUIDE_COEF=1.0 bash sweep.sh
+NOTES=diff-iql+td3 TASK=antmaze ALPHA=0.25 GUIDE_COEF=1.0 bash sweep.sh
+
+# expectile td3
+NOTES=diff-iql+td3 TASK=gym ALPHA=0.25 GUIDE_COEF=0 bash sweep.sh
+NOTES=diff-iql+td3 TASK=antmaze ALPHA=0.25 GUIDE_COEF=0 bash sweep.sh

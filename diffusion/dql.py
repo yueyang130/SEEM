@@ -241,7 +241,7 @@ class DiffusionQL(Algo):
       qf_loss = qf1_loss + qf2_loss
       return (qf1_loss, qf2_loss), locals()
 
-    def expectile_critic_loss_fn(train_params):
+    def expectile_critic_loss_fn(train_params, tgt_params, rng):
       observations = batch['observations']
       actions = batch['actions']
       next_observations = batch['next_observations']
@@ -250,15 +250,15 @@ class DiffusionQL(Algo):
       next_v = self.vf.apply(train_params['vf'], next_observations)
 
       discount = self.config.discount**self.config.nstep
-      td_target = jax.lax.stop_gradient(
+      tgt_q = jax.lax.stop_gradient(
         rewards + (1 - dones) * discount * next_v
       )
 
-      q1_pred = self.qf.apply(train_params['qf1'], observations, actions)
-      q2_pred = self.qf.apply(train_params['qf2'], observations, actions)
-      qf1_loss = mse_loss(q1_pred, td_target)
-      qf2_loss = mse_loss(q2_pred, td_target)
-
+      cur_q1 = self.qf.apply(train_params['qf1'], observations, actions)
+      cur_q2 = self.qf.apply(train_params['qf2'], observations, actions)
+      qf1_loss = mse_loss(cur_q1, tgt_q)
+      qf2_loss = mse_loss(cur_q2, tgt_q)
+      qf_loss = qf1_loss + qf2_loss
       return (qf1_loss, qf2_loss), locals()
 
     if self.config.loss_type == 'IQL' or self.config.loss_type == 'Rainbow' and self.config.use_expectile:
@@ -318,7 +318,8 @@ class DiffusionQL(Algo):
   def _train_step_rainbow(
     self, train_states, tgt_params, rng, batch, policy_tgt_update=False
   ):
-    value_loss_fn = self.get_critic_loss(batch)
+    value_loss_fn = self.get_value_loss(batch, tgt_params)
+    critic_loss_fn = self.get_critic_loss(batch)
     diff_loss_fn = self.get_diff_loss(batch)
 
     def direct_guide_loss_fn(params, tgt_params, rng, pred_astart):
@@ -342,7 +343,7 @@ class DiffusionQL(Algo):
 
       # Construct the policy distribution
       action_dist = self.policy_dist.apply(params['policy_dist'], pred_astart)
-      if self.config.crr_fixed_std:
+      if self.config.fixed_std:
         action_dist = distrax.MultivariateNormalDiag(
           pred_astart, jnp.ones_like(pred_astart)
         )
@@ -377,7 +378,7 @@ class DiffusionQL(Algo):
           self.config.crr_ratio_upper_bound,
           jnp.exp(adv / self.config.crr_beta)
         )
-        if self.config.crr_adv_norm:
+        if self.config.adv_norm:
           lmbda = jax.nn.softmax(adv / self.config.crr_beta)
       else:
         lmbda = jnp.heaviside(adv, 0)
@@ -413,16 +414,24 @@ class DiffusionQL(Algo):
 
       return (policy_loss,), locals()
 
+    if self.config.use_expectile:
+      # Calculat v losses and grads (For IQL)
+      params = {key: train_states[key].params for key in self.model_keys}
+      (_, aux_v), grads_v = value_and_multi_grad(
+        value_loss_fn, 1, has_aux=True
+      )(
+        params
+      )
+
+      # Update vf train states
+      train_states['vf'] = train_states['vf'].apply_gradients(
+        grads=grads_v[0]['vf']
+      )
+
     # Calculat q losses and grads
     params = {key: train_states[key].params for key in self.model_keys}
     (_, aux_qf), grads_qf = value_and_multi_grad(
-      value_loss_fn, 2, has_aux=True
-    )(params, tgt_params, rng)
-
-    # Calculat policy losses and grads
-    params = {key: train_states[key].params for key in self.model_keys}
-    (_, aux_policy), grads_policy = value_and_multi_grad(
-      policy_loss_fn, 1, has_aux=True
+      critic_loss_fn, 2, has_aux=True
     )(params, tgt_params, rng)
 
     # Update qf train states
@@ -432,6 +441,12 @@ class DiffusionQL(Algo):
     train_states['qf2'] = train_states['qf2'].apply_gradients(
       grads=grads_qf[1]['qf2']
     )
+
+    # Calculat policy losses and grads
+    params = {key: train_states[key].params for key in self.model_keys}
+    (_, aux_policy), grads_policy = value_and_multi_grad(
+      policy_loss_fn, 1, has_aux=True
+    )(params, tgt_params, rng)
 
     # Update policy train states
     train_states['policy'] = train_states['policy'].apply_gradients(
@@ -456,8 +471,6 @@ class DiffusionQL(Algo):
       qf2_loss=aux_qf['qf2_loss'],
       cur_q1=aux_qf['cur_q1'].mean(),
       cur_q2=aux_qf['cur_q2'].mean(),
-      tgt_q1=aux_qf['tgt_q1'].mean(),
-      tgt_q2=aux_qf['tgt_q2'].mean(),
       tgt_q=aux_qf['tgt_q'].mean(),
       policy_loss=aux_policy['policy_loss'],
       direct_loss=aux_policy['td3_loss'],
@@ -471,6 +484,18 @@ class DiffusionQL(Algo):
       qf2_weight_norm=optax.global_norm(train_states['qf2'].params),
       policy_weight_norm=optax.global_norm(train_states['policy'].params),
     )
+    if self.config.use_expectile:
+      metrics.update(dict(
+        v_loss=aux_v['expectile_loss'],
+        v=aux_v['v_pred'].mean(),
+        v_grad_norm=optax.global_norm(grads_v[0]['vf']),
+        v_weight_norm=optax.global_norm(train_states['vf'].params),
+      ))
+    else:
+      metrics.update(dict(
+        tgt_q1=aux_qf['tgt_q1'].mean(),
+        tgt_q2=aux_qf['tgt_q2'].mean(),
+      ))
 
     return train_states, tgt_params, metrics
 
@@ -778,7 +803,7 @@ class DiffusionQL(Algo):
     (_, aux_qf), qf_grads = value_and_multi_grad(
       critic_loss, 2, has_aux=True
     )(
-      train_params
+      train_params, tgt_params, split_rng
     )
     train_states['qf1'] = train_states['qf1'].apply_gradients(
       grads=qf_grads[0]['qf1']
