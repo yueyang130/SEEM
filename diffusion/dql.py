@@ -162,9 +162,33 @@ class DiffusionQL(Algo):
     )
     self._model_keys = ('policy', 'qf1', 'qf2', 'vf', 'policy_dist')
 
-  def get_value_loss(self, batch):
 
-    def value_loss_fn(params, tgt_params, rng):
+  def get_value_loss(self, batch, tgt_params):
+    def expectile_value_loss_fn(train_params):
+      observations = batch['observations']
+      actions = batch['actions']
+      q1 = self.qf.apply(tgt_params['qf1'], observations, actions)
+      q2 = self.qf.apply(tgt_params['qf2'], observations, actions)
+      q_pred = jax.lax.stop_gradient(jnp.minimum(q1, q2))
+      v_pred = self.vf.apply(train_params['vf'], observations)
+      diff = q_pred - v_pred
+      expectile_weight = jnp.where(
+        diff > 0,
+        self.config.expectile,
+        1 - self.config.expectile,
+      )
+
+      expectile_loss = (expectile_weight * (diff**2)).mean()
+      return (expectile_loss,), locals()
+
+    if self.config.loss_type == 'IQL' or self.config.loss_type == 'Rainbow' and self.config.use_expectile:
+      return expectile_value_loss_fn
+    else:
+      raise NotImplementedError
+
+  def get_critic_loss(self, batch):
+    
+    def critic_loss_fn(params, tgt_params, rng):
       observations = batch['observations']
       actions = batch['actions']
       rewards = batch['rewards']
@@ -217,7 +241,30 @@ class DiffusionQL(Algo):
       qf_loss = qf1_loss + qf2_loss
       return (qf1_loss, qf2_loss), locals()
 
-    return value_loss_fn
+    def expectile_critic_loss_fn(train_params):
+      observations = batch['observations']
+      actions = batch['actions']
+      next_observations = batch['next_observations']
+      rewards = batch['rewards']
+      dones = batch['dones']
+      next_v = self.vf.apply(train_params['vf'], next_observations)
+
+      discount = self.config.discount**self.config.nstep
+      td_target = jax.lax.stop_gradient(
+        rewards + (1 - dones) * discount * next_v
+      )
+
+      q1_pred = self.qf.apply(train_params['qf1'], observations, actions)
+      q2_pred = self.qf.apply(train_params['qf2'], observations, actions)
+      qf1_loss = mse_loss(q1_pred, td_target)
+      qf2_loss = mse_loss(q2_pred, td_target)
+
+      return (qf1_loss, qf2_loss), locals()
+
+    if self.config.loss_type == 'IQL' or self.config.loss_type == 'Rainbow' and self.config.use_expectile:
+      return expectile_critic_loss_fn
+    else:
+      return critic_loss_fn
 
   def get_diff_loss(self, batch):
 
@@ -256,6 +303,8 @@ class DiffusionQL(Algo):
 
     return diff_loss
 
+
+
   @partial(jax.jit, static_argnames=('self', 'policy_tgt_update'))
   def _train_step(
     self, train_states, tgt_params, rng, batch, policy_tgt_update=False
@@ -269,10 +318,10 @@ class DiffusionQL(Algo):
   def _train_step_rainbow(
     self, train_states, tgt_params, rng, batch, policy_tgt_update=False
   ):
-    value_loss_fn = self.get_value_loss(batch)
+    value_loss_fn = self.get_critic_loss(batch)
     diff_loss_fn = self.get_diff_loss(batch)
 
-    def td3_loss_fn(params, tgt_params, rng, pred_astart):
+    def direct_guide_loss_fn(params, tgt_params, rng, pred_astart):
       observations = batch['observations']
 
       # Calculate guide loss
@@ -287,7 +336,7 @@ class DiffusionQL(Algo):
       )
       return guide_loss
 
-    def crr_loss_fn(params, tgt_params, rng, pred_astart, terms):
+    def indirect_guide_loss_fn(params, tgt_params, rng, pred_astart, terms):
       observations = batch['observations']
       actions = batch['actions']
 
@@ -356,8 +405,8 @@ class DiffusionQL(Algo):
 
       rng, split_rng = jax.random.split(rng)
       diff_loss, terms, ts, pred_astart = diff_loss_fn(params, split_rng)
-      td3_loss = td3_loss_fn(params, tgt_params, rng, pred_astart)
-      crr_loss = crr_loss_fn(params, tgt_params, rng, pred_astart, terms)
+      td3_loss = direct_guide_loss_fn(params, tgt_params, rng, pred_astart)
+      crr_loss = indirect_guide_loss_fn(params, tgt_params, rng, pred_astart, terms)
 
       policy_loss = self.config.diff_coef * diff_loss + \
             self.config.guide_coef * crr_loss + self.config.alpha * td3_loss
@@ -428,7 +477,7 @@ class DiffusionQL(Algo):
   def _train_step_td3(
     self, train_states, tgt_params, rng, batch, policy_tgt_update=False
   ):
-    value_loss_fn = self.get_value_loss(batch)
+    value_loss_fn = self.get_critic_loss(batch)
     diff_loss_fn = self.get_diff_loss(batch)
 
     def policy_loss_fn(params, tgt_params, rng):
@@ -514,7 +563,7 @@ class DiffusionQL(Algo):
   def _train_step_crr(
     self, train_states, tgt_params, rng, batch, policy_tgt_update=False
   ):
-    value_loss_fn = self.get_value_loss(batch)
+    value_loss_fn = self.get_critic_loss(batch)
     diff_loss_fn = self.get_diff_loss(batch)
 
     def policy_loss_fn(params, tgt_params, rng):
@@ -662,43 +711,9 @@ class DiffusionQL(Algo):
   ):
     diff_loss_fn = self.get_diff_loss(batch)
 
-    def value_loss(train_params):
-      observations = batch['observations']
-      actions = batch['actions']
-      q1 = self.qf.apply(tgt_params['qf1'], observations, actions)
-      q2 = self.qf.apply(tgt_params['qf2'], observations, actions)
-      q_pred = jax.lax.stop_gradient(jnp.minimum(q1, q2))
-      v_pred = self.vf.apply(train_params['vf'], observations)
-      diff = q_pred - v_pred
-      expectile_weight = jnp.where(
-        diff > 0,
-        self.config.expectile,
-        1 - self.config.expectile,
-      )
-
-      expectile_loss = (expectile_weight * (diff**2)).mean()
-      return (expectile_loss,), locals()
-
-    def critic_loss(train_params):
-      observations = batch['observations']
-      actions = batch['actions']
-      next_observations = batch['next_observations']
-      rewards = batch['rewards']
-      dones = batch['dones']
-      next_v = self.vf.apply(train_params['vf'], next_observations)
-
-      discount = self.config.discount**self.config.nstep
-      td_target = jax.lax.stop_gradient(
-        rewards + (1 - dones) * discount * next_v
-      )
-
-      q1_pred = self.qf.apply(train_params['qf1'], observations, actions)
-      q2_pred = self.qf.apply(train_params['qf2'], observations, actions)
-      qf1_loss = mse_loss(q1_pred, td_target)
-      qf2_loss = mse_loss(q2_pred, td_target)
-
-      return (qf1_loss, qf2_loss), locals()
-
+    value_loss = self.get_value_loss(batch, tgt_params)
+    critic_loss = self.get_critic_loss(batch)
+   
     def policy_loss(params, rng):
       observations = batch['observations']
       actions = batch['actions']
