@@ -39,13 +39,12 @@ To run iql+td3
 DEBUG Docker `NS=offbench make run cmd="sleep 100000"`
 
 # iql
-NOTES=diff-iql TASK=gym ALPHA=0 GUIDE_COEF=1.0 bash sweep.sh
-NOTES=diff-iql TASK=antmaze ALPHA=0 GUIDE_COEF=1.0 bash sweep.sh
+NOTES=diff-iql TASK=antmaze ALPHA=0 GUIDE_COEF=1.0 START=4 RUNS=5 bash scripts/launch_job.sh
+NOTES=diff-iql TASK=antmaze ALPHA=0.25 GUIDE_COEF=1.0 START=3 RUNS=5 bash scripts/launch_job.sh
 
-# iql+td3
-NOTES=diff-iql+td3 TASK=gym ALPHA=0.25 GUIDE_COEF=1.0 bash sweep.sh
-NOTES=diff-iql+td3 TASK=antmaze ALPHA=0.25 GUIDE_COEF=1.0 bash sweep.sh
+
 
 # expectile td3
-NOTES=diff-iql+td3 TASK=gym ALPHA=0.25 GUIDE_COEF=0 bash sweep.sh
-NOTES=diff-iql+td3 TASK=antmaze ALPHA=0.25 GUIDE_COEF=0 bash sweep.sh
+NOTES=diff-iql+td3 TASK=gym ALPHA=0.25 GUIDE_COEF=1.0 bash scripts/launch_job.sh
+NOTES=diff-iql+td3 TASK=gym ALPHA=0.25 GUIDE_COEF=0 bash scripts/launch_job.sh
+NOTES=diff-iql+td3 TASK=gym ALPHA=0 GUIDE_COEF=1.0 bash scripts/launch_job.sh
