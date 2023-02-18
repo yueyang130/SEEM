@@ -12,7 +12,7 @@ PRIORITY=high NS=offbench make run cmd="python -m diffusion.trainer --env=hopper
 
 To reproduce CRR
 ```bash
-PRIORITY=high NS=offbench make run cmd="python -m diffusion.trainer --env=hopper-medium-v2 --algo_cfg.use_pred_astart=True --logging.online=True --algo_cfg.loss_type=CRR --algo_cfg.guide_coef=0.01"
+PRIORITY=high NS=offbench make run cmd="python -m diffusion.trainer --logging.output_dir=./experiment_output --logging.online --obs_norm=False --algo_cfg.loss_type=CRR --sample_method=dpm --algo_cfg.crr_avg_fn=mean --algo_cfg.crr_fn=exp --algo_cfg.crr_adv_norm=True --qf_layer_norm=True --policy_layer_norm=False --seed=1 --env=antmaze-large-play-v0 --eval_n_trajs=100 --eval_period=50 --n_epochs=2000"
 ```
 
 Produce IQL
