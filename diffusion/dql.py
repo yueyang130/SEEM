@@ -48,7 +48,8 @@ class DiffusionQL(Algo):
     cfg.weight_decay = 0.
 
     cfg.loss_type = 'TD3'
-    cfg.use_expectile = False  # CRR or IQL
+    cfg.use_expectile = False  # False: CRR; True: IQL
+    cfg.expectile_q = False  # use td of expectile v to estimate q
 
     cfg.adv_norm = False
     # CRR-related hps
@@ -264,9 +265,9 @@ class DiffusionQL(Algo):
       qf_loss = qf1_loss + qf2_loss
       return (qf1_loss, qf2_loss), locals()
 
-    if self.config.loss_type == 'IQL' or self.config.loss_type == 'Rainbow' and self.config.use_expectile:
+    if self.config.loss_type == 'IQL':
       return expectile_critic_loss_fn
-    else:
+    else: # For rainbow, also use TD3 loss
       return critic_loss_fn
 
   def get_diff_loss(self, batch):
@@ -340,9 +341,77 @@ class DiffusionQL(Algo):
       )
       return guide_loss
 
-    def indirect_guide_loss_fn(params, tgt_params, rng, pred_astart, terms):
+    # def crr_guide_loss_fn(params, tgt_params, rng, pred_astart, terms):
+    #   observations = batch['observations']
+    #   actions = batch['actions']
+
+    #   # Construct the policy distribution
+    #   action_dist = self.policy_dist.apply(params['policy_dist'], pred_astart)
+    #   if self.config.fixed_std:
+    #     action_dist = distrax.MultivariateNormalDiag(
+    #       pred_astart, jnp.ones_like(pred_astart)
+    #     )
+
+    #   # Build action distribution
+    #   replicated_obs = jnp.broadcast_to(
+    #     observations, (self.config.sample_actions,) + observations.shape
+    #   )
+    #   rng, split_rng = jax.random.split(rng)
+    #   if self.config.use_pred_astart:
+    #     vf_actions = action_dist.sample(
+    #       seed=split_rng, sample_shape=self.config.sample_actions
+    #     )
+    #   else:
+    #     vf_actions = self.policy.apply(
+    #       params['policy'], split_rng, replicated_obs
+    #     )
+
+    #   # Compute the current Q estimates
+    #   cur_q1 = self.qf.apply(params['qf1'], observations, actions)
+    #   cur_q2 = self.qf.apply(params['qf2'], observations, actions)
+
+    #   # Compute values
+    #   v1 = self.qf.apply(params['qf1'], replicated_obs, vf_actions)
+    #   v2 = self.qf.apply(params['qf2'], replicated_obs, vf_actions)
+    #   v = jnp.minimum(v1, v2)
+    #   q_pred = jnp.minimum(cur_q1, cur_q2)
+    #   avg_fn = getattr(jnp, self.config.crr_avg_fn)
+    #   adv = q_pred - avg_fn(v, axis=0)
+    #   if self.config.crr_fn == 'exp':
+    #     lmbda = jnp.minimum(
+    #       self.config.crr_ratio_upper_bound,
+    #       jnp.exp(adv / self.config.crr_beta)
+    #     )
+    #     if self.config.adv_norm:
+    #       lmbda = jax.nn.softmax(adv / self.config.crr_beta)
+    #   else:
+    #     lmbda = jnp.heaviside(adv, 0)
+    #   lmbda = jax.lax.stop_gradient(lmbda)
+    #   if self.config.crr_weight_mode == 'elbo':
+    #     log_prob = -terms['ts_weights'] * terms['mse']
+    #   elif self.config.crr_weight_mode == 'mle':
+    #     log_prob = action_dist.log_prob(actions)
+    #   else:
+    #     rng, split_rng = jax.random.split(rng)
+    #     if not self.config.crr_multi_sample_mse:
+    #       sampled_actions = action_dist.sample(seed=split_rng)
+    #       log_prob = -((sampled_actions - actions)**2).mean(axis=-1)
+    #     else:
+    #       sampled_actions = action_dist.sample(
+    #         seed=split_rng, sample_shape=self.config.sample_actions
+    #       )
+    #       log_prob = -(
+    #         (sampled_actions - jnp.expand_dims(actions, axis=0))**2
+    #       ).mean(axis=(0, -1))
+    #   guide_loss = -jnp.mean(log_prob * lmbda)
+    #   return guide_loss
+
+    def crr_guide_loss_fn(params, tgt_params, rng, pred_astart, terms):
       observations = batch['observations']
       actions = batch['actions']
+      rewards = batch['rewards']
+      next_observations = batch['next_observations']
+      dones = batch['dones']
 
       # Construct the policy distribution
       action_dist = self.policy_dist.apply(params['policy_dist'], pred_astart)
@@ -351,31 +420,20 @@ class DiffusionQL(Algo):
           pred_astart, jnp.ones_like(pred_astart)
         )
 
-      # Build action distribution
-      replicated_obs = jnp.broadcast_to(
-        observations, (self.config.sample_actions,) + observations.shape
-      )
-      rng, split_rng = jax.random.split(rng)
-      if self.config.use_pred_astart:
-        vf_actions = action_dist.sample(
-          seed=split_rng, sample_shape=self.config.sample_actions
-        )
-      else:
-        vf_actions = self.policy.apply(
-          params['policy'], split_rng, replicated_obs
-        )
+      # Compute values
+      v_pred = self.vf.apply(params['vf'], observations)
 
       # Compute the current Q estimates
-      cur_q1 = self.qf.apply(params['qf1'], observations, actions)
-      cur_q2 = self.qf.apply(params['qf2'], observations, actions)
+      if self.config.expectile_q:
+        next_v = self.vf.apply(params['vf'], next_observations)
+        discount = self.config.discount**self.config.nstep
+        q_pred = rewards + (1 - dones) * discount * next_v
+      else:
+        cur_q1 = self.qf.apply(params['qf1'], observations, actions)
+        cur_q2 = self.qf.apply(params['qf2'], observations, actions)
+        q_pred = jnp.minimum(cur_q1, cur_q2)
 
-      # Compute values
-      v1 = self.qf.apply(params['qf1'], replicated_obs, vf_actions)
-      v2 = self.qf.apply(params['qf2'], replicated_obs, vf_actions)
-      v = jnp.minimum(v1, v2)
-      q_pred = jnp.minimum(cur_q1, cur_q2)
-      avg_fn = getattr(jnp, self.config.crr_avg_fn)
-      adv = q_pred - avg_fn(v, axis=0)
+      adv = q_pred - v_pred
       if self.config.crr_fn == 'exp':
         lmbda = jnp.minimum(
           self.config.crr_ratio_upper_bound,
@@ -410,7 +468,7 @@ class DiffusionQL(Algo):
       rng, split_rng = jax.random.split(rng)
       diff_loss, terms, ts, pred_astart = diff_loss_fn(params, split_rng)
       td3_loss = direct_guide_loss_fn(params, tgt_params, rng, pred_astart)
-      crr_loss = indirect_guide_loss_fn(params, tgt_params, rng, pred_astart, terms)
+      crr_loss = crr_guide_loss_fn(params, tgt_params, rng, pred_astart, terms)
 
       policy_loss = self.config.diff_coef * diff_loss + \
             self.config.guide_coef * crr_loss + self.config.alpha * td3_loss
