@@ -394,6 +394,5 @@ if __name__ == '__main__':
   def main(argv):
     trainer = DiffusionTrainer()
     trainer.train()
-    os._exit(os.EX_OK)
 
   absl.app.run(main)

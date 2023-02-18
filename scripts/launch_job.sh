@@ -16,6 +16,8 @@ POLICY_LAYER_NORM="${POLICY_LAYER_NORM:-False}"
 OBS_NORM="${OBS_NORM:-False}"
 LOSS_TYPE="${LOSS_TYPE:-Rainbow}"
 USE_EXPECTILE="${USE_EXPECTILE:-True}"
+EXPECTILE="${EXPECTILE:-0.7}"
+AWR_TEMP="${AWR_TEMP:-10.0}"
 SAMPLE_METHOD="${SAMPLE_METHOD:-dpm}"
 WEIGHT_MODE="${WEIGHT_MODE:-mle}"
 AVG_FN="${AVG_FN:-mean}"
@@ -65,7 +67,7 @@ then
   for level in medium medium-replay medium-expert
   # for level in random
   do
-    PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --algo=${ALGO} --seed=${i} --env=${env}-${level}-v2 --n_epochs=2000"
+    PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --algo=${ALGO} --seed=${i} --env=${env}-${level}-v2 --n_epochs=2000 --algo_cfg.expectile=$EXPECTILE"
     sleep 1
   done
   done
@@ -77,9 +79,10 @@ elif [ "$TASK" = "rl_unplugged" ]; then
   done
 elif [ "$TASK" = "antmaze" ]; then
   # for level in umaze-v0 umaze-diverse-v0 medium-play-v0 medium-diverse-v0 large-play-v0 large-diverse-v0
-  for level in umaze-diverse-v0 large-play-v0 large-diverse-v0
+  # for level in umaze-diverse-v0 large-play-v0 large-diverse-v0
+  for level in umaze-diverse-v0
   do
-    PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --seed=${i}  --env=antmaze-${level} --eval_n_trajs=100 --eval_period=50 --n_epochs=2000 --algo_cfg.max_q_backup=True --algo_cfg.expectile=0.9 --algo_cfg.awr_temperature=10.0"
+    PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --seed=${i}  --env=antmaze-${level} --eval_n_trajs=100 --eval_period=50 --n_epochs=2000 --algo_cfg.max_q_backup=True --algo_cfg.expectile=0.9 --algo_cfg.awr_temperature=$AWR_TEMP"
     sleep 1
   done
 elif [ "$TASK" = "kitchen" ]; then

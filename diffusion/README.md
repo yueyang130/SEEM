@@ -43,8 +43,15 @@ NOTES=diff-iql TASK=antmaze ALPHA=0 GUIDE_COEF=1.0 START=4 RUNS=5 bash scripts/l
 NOTES=diff-iql TASK=antmaze ALPHA=0.25 GUIDE_COEF=1.0 START=3 RUNS=5 bash scripts/launch_job.sh
 
 
-
 # expectile td3
 NOTES=diff-iql+td3 TASK=gym ALPHA=0.25 GUIDE_COEF=1.0 bash scripts/launch_job.sh
 NOTES=diff-iql+td3 TASK=gym ALPHA=0.25 GUIDE_COEF=0 bash scripts/launch_job.sh
-NOTES=diff-iql+td3 TASK=gym ALPHA=0 GUIDE_COEF=1.0 bash scripts/launch_job.sh
+NOTES=diff-iql+td3 TASK=gym ALPHA=0.25 GUIDE_COEF=0 EXPECTILE=0.5 bash scripts/launch_job.sh
+NOTES=diff-iql+td3 TASK=gym ALPHA=0.25 GUIDE_COEF=0 EXPECTILE=0.6 bash scripts/launch_job.sh
+
+# 
+ALGO=DiffIQL LOSS_TYPE=IQL AWR_TEMP=1.0 TASK=antmaze RUNS=3 bash scripts/launch_job.sh
+
+ALGO=DiffIQL LOSS_TYPE=IQL AWR_TEMP=0.5 TASK=antmaze bash scripts/launch_job.sh
+ALGO=DiffIQL LOSS_TYPE=IQL AWR_TEMP=2.0 TASK=antmaze bash scripts/launch_job.sh
+ALGO=DiffIQL LOSS_TYPE=IQL AWR_TEMP=4.0 TASK=antmaze bash scripts/launch_job.sh

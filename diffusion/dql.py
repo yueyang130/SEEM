@@ -53,8 +53,6 @@ class DiffusionQL(Algo):
     cfg.adv_norm = False
     # CRR-related hps
     cfg.sample_actions = 20
-    cfg.crr_ratio_upper_bound = 20
-    cfg.crr_beta = 1.0
     cfg.crr_weight_mode = 'mle'
     cfg.fixed_std = True
     cfg.crr_multi_sample_mse = False
@@ -63,7 +61,12 @@ class DiffusionQL(Algo):
 
     # IQL-related hps
     cfg.expectile = 0.7
+
+    # CRR and IQL shared hps
+    cfg.crr_ratio_upper_bound = 20
+    cfg.crr_beta = 1.0
     cfg.awr_temperature = 3.0
+
 
     # for dpm-solver
     cfg.dpm_steps = 15
@@ -831,9 +834,9 @@ class DiffusionQL(Algo):
       next_v=aux_qf['next_v'].mean(),
       qf1_loss=aux_qf['qf1_loss'],
       qf2_loss=aux_qf['qf2_loss'],
-      cur_q1=aux_qf['q1_pred'].mean(),
-      cur_q2=aux_qf['q2_pred'].mean(),
-      tgt_q=aux_qf['td_target'].mean(),
+      cur_q1=aux_qf['cur_q1'].mean(),
+      cur_q2=aux_qf['cur_q2'].mean(),
+      tgt_q=aux_qf['tgt_q'].mean(),
       policy_loss=aux_policy['policy_loss'],
       guide_loss=aux_policy['guide_loss'],
       diff_loss=aux_policy['diff_loss'],
