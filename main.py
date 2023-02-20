@@ -8,7 +8,6 @@ import wandb
 import utils
 import TD3_BC
 import time
-from advantage import *
 
 # Runs policy for X episodes and returns D4RL score
 # A fixed seed is used for the eval environment
@@ -144,8 +143,6 @@ if __name__ == "__main__":
             **kwargs
             })
 
-    # replay_buffer = utils.ReplayBuffer(state_dim, action_dim, args.batch_size,
-    #     base_prob=args.base_prob, resample=args.resample, reweight=args.reweight, discount=args.discount)
     replay_buffer = utils.ReplayBuffer(state_dim, action_dim, args.batch_size,
         base_prob=args.base_prob, resample=args.resample, reweight=args.reweight, n_step=1, discount=args.discount)
     replay_buffer.convert_D4RL(d4rl.qlearning_dataset(env))

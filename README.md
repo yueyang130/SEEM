@@ -1,25 +1,40 @@
-# A Minimalist Approach to Offline Reinforcement Learning
+# OPER: Offline Prioritized Eexperience Replay
 
-TD3+BC is a simple approach to offline RL where only two changes are made to TD3: (1) a weighted behavior cloning loss is added to the policy update and (2) the states are normalized. Unlike competing methods there are no changes to architecture or underlying hyperparameters. The paper can be found [here](https://arxiv.org/abs/2106.06860).
+This `td` branch performs the TD3+BC case study to demonstrate the effectiveness of OPER.
 
 ### Usage
-Paper results were collected with [MuJoCo 1.50](http://www.mujoco.org/) (and [mujoco-py 1.50.1.1](https://github.com/openai/mujoco-py)) in [OpenAI gym 0.17.0](https://github.com/openai/gym) with the [D4RL datasets](https://github.com/rail-berkeley/d4rl). Networks are trained using [PyTorch 1.4.0](https://github.com/pytorch/pytorch) and Python 3.6.
+1. Generate or download the OPER-A priority weights. For OPER-R prioriy weights, it can be automatically loaded in the second step.
 
-The paper results can be reproduced by running:
-```
-./run_experiments.sh
-```
+2. Train TD3+BC on Gym locomotion tasks.
 
-
-### Bibtex
-```
-@inproceedings{fujimoto2021minimalist,
-	title={A Minimalist Approach to Offline Reinforcement Learning},
-	author={Scott Fujimoto and Shixiang Shane Gu},
-	booktitle={Thirty-Fifth Conference on Neural Information Processing Systems},
-	year={2021},
-}
+Train on the original dataset
+``` 
+python main.py --env $env --seed $i --bc_eval=0
 ```
 
----
-*This is not an official Google product. 
+To reproduce the main results of OPER-A in the paper, i.e., only prioritizing data for policy constraint and improvement terms, train on 5 th prioritized dataset by resampling or resampling:
+```
+# resample
+python main.py --env $env --seed $i --weight_path $PATH --weight_num 3 --iter 5 --std=$STD ---bc_eval=1 --resample --two_sampler
+
+# reweight
+python main.py --env $env --seed $i --weight_path $PATH --weight_num 3 --iter 5 --std=2.0 ---bc_eval=1 --reweight --reweight_eval=0
+```
+
+To prioritize data for all terms, run the code:
+```
+# resample
+python main.py --env $env --seed $i --weight_path $PATH --weight_num 3 --iter 5 --std=$STD ---bc_eval=1 --resampler
+
+# reweight
+python main.py --env $env --seed $i --weight_path $PATH --weight_num 3 --iter 5 --std=2.0 ---bc_eval=1 --reweight
+```
+
+To reproduce the main results of OPER-R in the paper, run the code:
+```
+# resample
+python main.py --env $env --seed $i --bc_eval=0 --resample
+
+# reweight
+python main.py --env $env --seed $i --bc_eval=0 --reweight
+```
