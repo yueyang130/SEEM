@@ -39,15 +39,23 @@ else
   echo "sample method not implemented"
 fi
 
-if [ "$LOSS_TYPE" = "IQL" ] || [  "$USE_EXPECTILE" = "True" ];
+if [ "TASK" = 'antmaze' ];
+then
+    QF_LAYER_NORM=True
+fi
+
+# if [ "$LOSS_TYPE" = "IQL" ] || [  "$USE_EXPECTILE" = "True" ];
+if [ "$LOSS_TYPE" = "IQL" ];
 then
   # ORTHOG_INIT=True
-  FIXED_STD=False
   if [ "TASK" = 'antmaze' ];
   then
     NORM_REW=False
+    FIXED_STD=True
+    ADV_NORM=True
   else
     NORM_REW=True
+    FIXED_STD=False
   fi
 fi
 
@@ -63,10 +71,14 @@ for (( i=$START; i<=${RUNS}; i++ ))
 do
 if [ "$TASK" = "gym" ];
 then
+  # for env in halfcheetah-medium-expert hopper-medium hopper-medium-expert
+  # do
+  #   PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --algo=${ALGO} --seed=${i} --env=${env}-v2 --n_epochs=2000 --algo_cfg.expectile=$EXPECTILE"
+  #   sleep 1
+  # done
   for env in halfcheetah hopper walker2d
   do
   for level in medium medium-replay medium-expert
-  # for level in random
   do
     PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --algo=${ALGO} --seed=${i} --env=${env}-${level}-v2 --n_epochs=2000 --algo_cfg.expectile=$EXPECTILE"
     sleep 1
