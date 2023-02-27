@@ -193,6 +193,7 @@ class DiffusionTrainer(MFTrainer):
     self._cfgs.algo_cfg.max_grad_norm = hyperparameters[self._cfgs.env]['gn']
     self._cfgs.algo_cfg.lr_decay_steps = \
       self._cfgs.n_epochs * self._cfgs.n_train_step_per_epoch
+    self._cfgs.algo_cfg.train_steps = self._cfgs.algo_cfg.lr_decay_steps
 
     if self._cfgs.activation == 'mish':
       act_fn = lambda x: x * jnp.tanh(jax.nn.softplus(x))
