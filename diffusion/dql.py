@@ -923,10 +923,11 @@ class DiffusionQL(Algo):
       self._total_steps > 1000 and
       self._total_steps % self.config.policy_tgt_freq == 0
     )
-    qf_update = (
-      not self.config.guide_warmup or
-      self._total_steps >= self.config.train_steps // 4
-    )
+    # qf_update = (
+    #   not self.config.guide_warmup or
+    #   self._total_steps >= self.config.train_steps // 4
+    # )
+    qf_update = True
     self._train_states, self._tgt_params, metrics = self._train_step(
       self._train_states, self._tgt_params, next_rng(), batch,
       self.guide_warmup_coef, qf_update, policy_tgt_update
@@ -952,11 +953,12 @@ class DiffusionQL(Algo):
   @property
   def guide_warmup_coef(self):
       if self.config.guide_warmup:
-        if self._total_steps < self.config.train_steps // 4:
-          return 0
-        elif self._total_steps < self.config.train_steps // 2:
-          return  4 * self._total_steps / self.config.train_steps - 1
-        else:
-          return 1.0
+        # if self._total_steps < self.config.train_steps // 4:
+        #   return 0
+        # elif self._total_steps < self.config.train_steps // 2:
+        #   return  4 * self._total_steps / self.config.train_steps - 1
+        # else:
+        #   return 1.0
+        return 0.0
       else:
         return 1.0

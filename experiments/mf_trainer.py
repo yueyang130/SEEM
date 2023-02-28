@@ -221,8 +221,9 @@ class MFTrainer(Trainer):
       norm_obs(dataset, self._obs_mean, self._obs_std, self._obs_clip)
 
       if self._env == ENV.Antmaze:
-        if self._cfgs.algo_cfg.loss_type == 'IQL':
+        if self._cfgs.algo_cfg.loss_type in ['IQL', 'Rainbow']:
           dataset["rewards"] -= 1
+          dataset["rewards"] *= 0.1
         else:
           dataset["rewards"] = (dataset["rewards"] - 0.5) * 4
       else:
