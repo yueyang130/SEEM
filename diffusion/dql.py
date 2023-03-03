@@ -50,6 +50,9 @@ class DiffusionQL(Algo):
     cfg.weight_decay = 0.
 
     cfg.loss_type = 'TD3'
+    cfg.target_clip = False
+    cfg.trust_region_target = False
+    cfg.MAX_Q = 0.0
     cfg.use_expectile = False  # False: CRR; True: IQL
     cfg.expectile_q = False  # use td of expectile v to estimate q
 
@@ -236,13 +239,21 @@ class DiffusionQL(Algo):
       tgt_q = rewards + (1 - dones) * self.config.discount * tgt_q
       tgt_q = jax.lax.stop_gradient(tgt_q)
 
+      if self.config.target_clip:
+        tgt_q = jnp.minimum(tgt_q, self.config.MAX_Q)
+
       # Compute the current Q estimates
       cur_q1 = self.qf.apply(params['qf1'], observations, actions)
       cur_q2 = self.qf.apply(params['qf2'], observations, actions)
 
       # qf loss
-      qf1_loss = mse_loss(cur_q1, tgt_q)
-      qf2_loss = mse_loss(cur_q2, tgt_q)
+      if self.config.trust_region_target:  
+        w = jnp.where(tgt_q<self.config.MAX_Q, 1, 0)
+        qf1_loss = jnp.mean(jnp.square(w*(cur_q1 - tgt_q)))
+        qf2_loss = jnp.mean(jnp.square(w*(cur_q2 - tgt_q)))
+      else:
+        qf1_loss = mse_loss(cur_q1, tgt_q)
+        qf2_loss = mse_loss(cur_q2, tgt_q)
 
       qf_loss = qf1_loss + qf2_loss
       return (qf1_loss, qf2_loss), locals()
@@ -953,12 +964,12 @@ class DiffusionQL(Algo):
   @property
   def guide_warmup_coef(self):
       if self.config.guide_warmup:
-        # if self._total_steps < self.config.train_steps // 4:
-        #   return 0
-        # elif self._total_steps < self.config.train_steps // 2:
-        #   return  4 * self._total_steps / self.config.train_steps - 1
-        # else:
-        #   return 1.0
-        return 0.0
+        if self._total_steps < self.config.train_steps // 4:
+          return 0
+        elif self._total_steps < self.config.train_steps // 2:
+          return  4 * self._total_steps / self.config.train_steps - 1
+        else:
+          return 1.0
+        # return 0.0
       else:
         return 1.0
