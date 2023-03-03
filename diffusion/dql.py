@@ -236,11 +236,14 @@ class DiffusionQL(Algo):
           tgt_params['qf2'], next_observations, next_action
         )
         tgt_q = jnp.minimum(tgt_q1, tgt_q2)
-      tgt_q = rewards + (1 - dones) * self.config.discount * tgt_q
-      tgt_q = jax.lax.stop_gradient(tgt_q)
 
       if self.config.target_clip:
         tgt_q = jnp.minimum(tgt_q, self.config.MAX_Q)
+      if self.config.trust_region_target:  
+        w = jnp.where((tgt_q<=self.config.MAX_Q) | dones.astype(bool), 1, 0)
+
+      tgt_q = rewards + (1 - dones) * self.config.discount * tgt_q
+      tgt_q = jax.lax.stop_gradient(tgt_q)
 
       # Compute the current Q estimates
       cur_q1 = self.qf.apply(params['qf1'], observations, actions)
@@ -248,7 +251,6 @@ class DiffusionQL(Algo):
 
       # qf loss
       if self.config.trust_region_target:  
-        w = jnp.where(tgt_q<self.config.MAX_Q, 1, 0)
         qf1_loss = jnp.mean(jnp.square(w*(cur_q1 - tgt_q)))
         qf2_loss = jnp.mean(jnp.square(w*(cur_q2 - tgt_q)))
       else:
