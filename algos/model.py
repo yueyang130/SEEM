@@ -31,7 +31,7 @@ MEAN_MAX = 9.0
 
 
 def update_target_network(main_params, target_params, tau):
-  return jax.tree_multimap(
+  return jax.tree_map(
     lambda x, y: tau * x + (1.0 - tau) * y, main_params, target_params
   )
 

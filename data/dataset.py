@@ -21,10 +21,10 @@ import numpy as np
 import tensorflow as tf
 import tensorflow_datasets as tfds
 from acme import types
-from acme.tf import utils as tf2_utils
+# from acme.tf import utils as tf2_utils
 from dm_env import StepType
 from gym import spaces
-from rl_unplugged import dm_control_suite
+# from rl_unplugged import dm_control_suite
 
 
 class Dataset(object):

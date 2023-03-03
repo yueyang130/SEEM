@@ -5,7 +5,7 @@ ALPHA="${ALPHA:-0.25}"
 GUIDE_COEF="${GUIDE_COEF:-1.0}"
 PRIORITY="${PRIORITY:-high}"
 
-NS="${NS:-offbench}"
+GPU="${GPU:-0}"
 ALGO="${ALGO:-DiffQL}"
 START="${START:-1}" # d4rl / antmaze / rl_unplugged
 RUNS="${RUNS:-1}" # d4rl / antmaze / rl_unplugged
@@ -24,6 +24,8 @@ AVG_FN="${AVG_FN:-mean}"
 CRR_FN="${CRR_FN:-exp}"
 ADV_NORM="${ADV_NORM:-False}"
 NORM_REW="${NORM_REW:-False}"
+REW_SCALE="${REW_SCALE:-1}"
+REW_BIAS="${REW_BIAS:-0}"
 LR_DECAY="${LR_DECAY:-True}"
 FIXED_STD="${FIXED_STD:-True}"
 ORTHOG_INIT="${ORTHOG_INIT:-False}"
@@ -59,7 +61,7 @@ then
   fi
 fi
 
-BASE_CMD="python -m diffusion.trainer --logging.output_dir=./experiment_output --logging.online --logging.notes=$NOTES --algo=${ALGO} --obs_norm=${OBS_NORM} --algo_cfg.loss_type=${LOSS_TYPE} --algo_cfg.use_expectile=${USE_EXPECTILE}   --algo_cfg.expectile_q=${EXPECTILE_Q} --sample_method=${SAMPLE_METHOD} --algo_cfg.crr_avg_fn=${AVG_FN} --algo_cfg.crr_fn=${CRR_FN} --algo_cfg.adv_norm=${ADV_NORM} --qf_layer_norm=${QF_LAYER_NORM} --policy_layer_norm=${POLICY_LAYER_NORM} --algo_cfg.num_timesteps=${NUM_T} --norm_reward=${NORM_REW} --algo_cfg.lr_decay=${LR_DECAY} --algo_cfg.fixed_std=${FIXED_STD} --orthogonal_init=${ORTHOG_INIT} \
+BASE_CMD="python -m diffusion.trainer --logging.output_dir=./experiment_output --logging.online --logging.notes=$NOTES --algo=${ALGO} --obs_norm=${OBS_NORM} --algo_cfg.loss_type=${LOSS_TYPE} --algo_cfg.use_expectile=${USE_EXPECTILE}   --algo_cfg.expectile_q=${EXPECTILE_Q} --sample_method=${SAMPLE_METHOD} --algo_cfg.crr_avg_fn=${AVG_FN} --algo_cfg.crr_fn=${CRR_FN} --algo_cfg.adv_norm=${ADV_NORM} --qf_layer_norm=${QF_LAYER_NORM} --policy_layer_norm=${POLICY_LAYER_NORM} --algo_cfg.num_timesteps=${NUM_T} --norm_reward=${NORM_REW} --reward_scale=${REW_SCALE} --reward_bias=${REW_BIAS} --algo_cfg.lr_decay=${LR_DECAY} --algo_cfg.fixed_std=${FIXED_STD} --orthogonal_init=${ORTHOG_INIT} \
 --algo_cfg.crr_weight_mode=$WEIGHT_MODE --algo_cfg.guide_coef=$GUIDE_COEF --algo_cfg.diff_coef=1.0  --algo_cfg.alpha=$ALPHA --algo_cfg.guide_warmup=${GUIDE_WARMUP}"
 
 
@@ -91,11 +93,11 @@ elif [ "$TASK" = "rl_unplugged" ]; then
     sleep 1
   done
 elif [ "$TASK" = "antmaze" ]; then
-  for level in umaze-v0 umaze-diverse-v0 medium-play-v0 medium-diverse-v0 large-play-v0 large-diverse-v0
+  # for level in umaze-v0 umaze-diverse-v0 medium-play-v0 medium-diverse-v0 large-play-v0 large-diverse-v0
   # for level in umaze-diverse-v0 large-play-v0 large-diverse-v0
-  # for level in medium-play-v0 
+  for level in umaze-diverse-v0
   do
-    PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --seed=${i}  --env=antmaze-${level} --eval_n_trajs=100 --eval_period=50 --n_epochs=2000 --algo_cfg.max_q_backup=True --algo_cfg.expectile=0.9 --algo_cfg.awr_temperature=$AWR_TEMP"
+    ${BASE_CMD} --seed=${i}  --env=antmaze-${level} --eval_n_trajs=100 --eval_period=50 --n_epochs=2000 --algo_cfg.max_q_backup=True --algo_cfg.expectile=0.9 --algo_cfg.awr_temperature=$AWR_TEMP &
     sleep 1
   done
 elif [ "$TASK" = "kitchen" ]; then
@@ -118,3 +120,5 @@ else
 fi
 done
 fi
+
+# wait #sync

@@ -8,6 +8,8 @@ import tqdm
 import numpy as np
 import os
 
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"]="false"
+
 from experiments.constants import ENV_MAP, ENVNAME_MAP, DATASET_ABBR_MAP
 from utilities.utils import (
   Timer,
@@ -39,8 +41,8 @@ FLAGS_DEF = define_flags_with_default(
   save_model=False,
   seed=42,
   batch_size=256,
-  reward_scale=1,
-  reward_bias=0,
+  reward_scale=1.0,
+  reward_bias=0.0,
   clip_action=0.999,
   encoder_arch="64-64",
   policy_arch="256-256-256",

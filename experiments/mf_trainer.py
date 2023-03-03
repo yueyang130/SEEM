@@ -222,8 +222,8 @@ class MFTrainer(Trainer):
 
       if self._env == ENV.Antmaze:
         if self._cfgs.algo_cfg.loss_type in ['IQL', 'Rainbow']:
-          dataset["rewards"] -= 1
-          dataset["rewards"] *= 0.1
+          # dataset["rewards"] -= 1
+          pass
         else:
           dataset["rewards"] = (dataset["rewards"] - 0.5) * 4
       else:
