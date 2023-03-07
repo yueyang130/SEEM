@@ -65,7 +65,7 @@ class WandBLogger(object):
   @staticmethod
   def get_default_config(updates=None):
     config = ConfigDict()
-    config.team = 'yueyang'
+    config.team = 'offlinerainbow'
     config.online = False
     config.prefix = ""
     config.project = "OfflineRL"
