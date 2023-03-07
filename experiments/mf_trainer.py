@@ -15,7 +15,7 @@ from algos.model import (
   TanhGaussianPolicy,
 )
 from core.core_api import Trainer
-from data import Dataset, DM2Gym, RandSampler, RLUPDataset
+from data import Dataset, DM2Gym, RandSampler, RLUPDataset, PrefetchBalancedSampler
 from experiments.constants import (
   ALGO,
   ALGO_MAP,
@@ -229,11 +229,31 @@ class MFTrainer(Trainer):
       else:
         min_r, max_r = np.min(dataset["rewards"]), np.max(dataset["rewards"])
         dataset["rewards"] = (dataset["rewards"] - min_r) / (max_r - min_r)
-        dataset["rewards"] = (dataset["rewards"] - 0.5) * 2
+        # dataset["rewards"] = (dataset["rewards"] - 0.5) * 2
 
     # set sampler
     dataset = Dataset(dataset)
-    sampler = RandSampler(dataset.size(), self._cfgs.batch_size)
+
+    if self._cfgs.oper:
+      if self._cfgs.priority=='return':
+        dist = dataset['returns']
+        dist = (dist - dist.min()) / (dist.max() - dist.min())
+        probs = dist / dist.sum()
+      elif self._cfgs.priority=='adv':
+        weight_list = []
+        raise NotImplementedError
+      else:
+        raise NotImplementedError(f'prioritiy is measured by return or adv. {self._cfgs.priority} is not supported.')
+    
+      sampler = PrefetchBalancedSampler(
+          probs.squeeze(),
+          dataset.size(),
+          self._cfgs.batch_size,
+          n_prefetch=self._cfgs.n_train_step_per_epoch
+        )
+    else:
+      sampler = RandSampler(dataset.size(), self._cfgs.batch_size)
+    
     dataset.set_sampler(sampler)
 
     return dataset, eval_sampler

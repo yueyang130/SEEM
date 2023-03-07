@@ -54,10 +54,12 @@ class Dataset(object):
   def set_sampler(self, sampler):
     self._sampler = sampler
 
-  def sample(self):
+  def sample(self, uniform=False):
     assert self._sampler is not None
-
-    indices = self._sampler.sample()
+    if uniform:
+      indices = np.random.randint(self.size(), size=self._sampler._batch_size)
+    else:
+      indices = self._sampler.sample()
     return self.retrieve(indices)
 
 

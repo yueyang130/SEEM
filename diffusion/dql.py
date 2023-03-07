@@ -326,18 +326,18 @@ class DiffusionQL(Algo):
 
   @partial(jax.jit, static_argnames=('self', 'policy_tgt_update', 'warmup_coef', 'qf_update'))
   def _train_step(
-    self, train_states, tgt_params, rng, batch, guide_warmup_coef, qf_update=False, policy_tgt_update=False, 
+    self, train_states, tgt_params, rng, batch, qf_batch, guide_warmup_coef, qf_update=False, policy_tgt_update=False, 
   ):
     if self.config.loss_type not in ['TD3', 'CRR', 'IQL', 'Rainbow']:
       raise NotImplementedError
 
     return getattr(self, f"_train_step_{self.config.loss_type.lower()}"
-                  )(train_states, tgt_params, rng, batch, guide_warmup_coef, qf_update, policy_tgt_update)
+                  )(train_states, tgt_params, rng, batch, qf_batch, guide_warmup_coef, qf_update, policy_tgt_update)
 
   def _train_step_rainbow(
-    self, train_states, tgt_params, rng, batch, guide_warmup_coef, qf_update=False, policy_tgt_update=False
+    self, train_states, tgt_params, rng, batch, qf_batch, guide_warmup_coef, qf_update=False, policy_tgt_update=False
   ):
-    critic_loss_fn = self.get_critic_loss(batch)
+    critic_loss_fn = self.get_critic_loss(qf_batch)
     diff_loss_fn = self.get_diff_loss(batch)
 
     def direct_guide_loss_fn(params, tgt_params, rng, pred_astart):
@@ -783,19 +783,15 @@ class DiffusionQL(Algo):
     return train_states, tgt_params, metrics
 
 
-  def train(self, batch):
+  def train(self, batch, qf_batch):
     self._total_steps += 1
     policy_tgt_update = (
       self._total_steps > 1000 and
       self._total_steps % self.config.policy_tgt_freq == 0
     )
-    # qf_update = (
-    #   not self.config.guide_warmup or
-    #   self._total_steps >= self.config.train_steps // 4
-    # )
     qf_update = True
     self._train_states, self._tgt_params, metrics = self._train_step(
-      self._train_states, self._tgt_params, next_rng(), batch,
+      self._train_states, self._tgt_params, next_rng(), batch, qf_batch,
       self.guide_warmup_coef, qf_update, policy_tgt_update
     )
     return metrics

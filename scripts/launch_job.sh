@@ -108,7 +108,7 @@ elif [ "$TASK" = "antmaze" ]; then
 elif [ "$TASK" = "kitchen" ]; then
   for level in complete-v0 partial-v0 mixed-v0
   do
-    PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --seed=${i} --env=kitchen-${level} --n_epochs 1000 --algo_cfg.awr_temperature=0.5"
+    CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --seed=${i} --env=kitchen-${level} --n_epochs 1000 --algo_cfg.awr_temperature=0.5
     sleep 1
   done
 elif [ "$TASK" = "adroit" ]; then
@@ -116,7 +116,7 @@ elif [ "$TASK" = "adroit" ]; then
   do
     for tp in human cloned
     do
-      PRIORITY=${PRIORITY} NS=${NS} make run cmd="${BASE_CMD} --algo=${ALGO} --seed=${i} --env=${scenario}-${tp}-v1 --n_epochs 1000 --algo_cfg.awr_temperature=0.5"
+      CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --algo=${ALGO} --seed=${i} --env=${scenario}-${tp}-v1 --n_epochs 1000 --algo_cfg.awr_temperature=0.5
       sleep 1
     done
   done

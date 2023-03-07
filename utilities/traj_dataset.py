@@ -162,6 +162,7 @@ def get_nstep_dataset(
   trajs, raw_dataset = get_traj_dataset(env, sorting, norm_reward)
 
   obss, acts, terms, next_obss, nstep_rews, dones_float = [], [], [], [], [], []
+  returns = []
   for traj in trajs:
     L = len(traj)
     rewards = np.array([ts[2] for ts in traj])
@@ -172,6 +173,8 @@ def get_nstep_dataset(
     acts.extend([traj[i][1] for i in range(L)])
     terms.extend([bool(1 - traj[i][3]) for i in range(L)])
     dones_float.extend(traj[i][4] for i in range(L))
+    ret = np.sum(rewards)
+    returns.append([ret]*L)
 
   dataset = {}
   dataset["observations"] = np.stack(obss)
@@ -180,9 +183,11 @@ def get_nstep_dataset(
   dataset["rewards"] = np.concatenate(nstep_rews)
   dataset["terminals"] = np.stack(terms)
   dataset["dones_float"] = np.stack(dones_float)
+  dataset['returns'] = np.concatenate(returns)
   raw_shape = raw_dataset["next_observations"].shape
 
   assert len(dataset["rewards"]) == len(raw_dataset["rewards"])
+  assert len(dataset["returns"]) == len(raw_dataset["rewards"])
   assert dataset["next_observations"].shape == raw_shape
 
   return dataset

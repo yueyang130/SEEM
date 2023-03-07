@@ -64,6 +64,10 @@ FLAGS_DEF = define_flags_with_default(
   sample_method='ddpm',
   policy_temp=1.0,
   norm_reward=False,
+  # hyperparameters for OPER https://github.com/sail-sg/OPER
+  oper=False,
+  two_sampler=False,
+  priority='return',
 )
 
 
@@ -230,7 +234,11 @@ class DiffusionTrainer(MFTrainer):
       with Timer() as train_timer:
         for _ in tqdm.tqdm(range(self._cfgs.n_train_step_per_epoch)):
           batch = batch_to_jax(self._dataset.sample())
-          metrics.update(prefix_metrics(self._agent.train(batch), "agent"))
+          if self._cfgs.two_sampler:
+            qf_batch = batch_to_jax(self._dataset.sample(uniform=True))
+          else:
+            qf_batch = batch
+          metrics.update(prefix_metrics(self._agent.train(batch, qf_batch), "agent"))
 
       with Timer() as eval_timer:
         if epoch == 0 or (epoch + 1) % self._cfgs.eval_period == 0:
