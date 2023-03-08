@@ -135,6 +135,7 @@ def get_d4rl_dataset(env, nstep=1, gamma=0.9, norm_reward=False):
     rewards=dataset["rewards"],
     dones=dataset["terminals"].astype(np.float32),
     dones_float=dataset["dones_float"],
+    returns=dataset["returns"],
   )
 
 

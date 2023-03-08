@@ -201,6 +201,13 @@ class MFTrainer(Trainer):
     if 'antmaze' in self._cfgs.env:
       norm_reward = False
 
+    # OPER constant: TODO
+    if self._env == ENV.Mujoco:
+      ITER = 5
+      STD = 2
+      EPS = 0.1
+
+
     dataset = get_d4rl_dataset(
       eval_sampler.env,
       self._cfgs.algo_cfg.nstep,
@@ -236,12 +243,25 @@ class MFTrainer(Trainer):
 
     if self._cfgs.oper:
       if self._cfgs.priority=='return':
-        dist = dataset['returns']
+        dist = dataset._data['returns']
         dist = (dist - dist.min()) / (dist.max() - dist.min())
         probs = dist / dist.sum()
       elif self._cfgs.priority=='adv':
         weight_list = []
-        raise NotImplementedError
+        for seed in range(1, 4):
+          wp = Path(__file__).absolute().parent.parent / 'weights' / f'{self._cfgs.env}_{seed}.npy'
+          res = np.load(wp, allow_pickle=True).item()
+          num_iter, bc_eval_steps = res['iter'], res['eval_steps']
+          assert ITER <= num_iter
+          weight_list.append(res[ITER])
+        weight = np.stack(weight_list, axis=0).mean(axis=0)
+        weight = weight - weight.min()
+        probs = weight / weight.sum()
+        size = dataset.size()
+        scale = STD / (probs.std() * size)
+        probs = scale*(probs - 1/size) + 1/size
+        probs = np.maximum(probs, EPS/size)
+        probs = probs/probs.sum() # norm to 1 again
       else:
         raise NotImplementedError(f'prioritiy is measured by return or adv. {self._cfgs.priority} is not supported.')
     
