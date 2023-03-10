@@ -101,9 +101,10 @@ elif [ "$TASK" = "rl_unplugged" ]; then
     sleep 1
   done
 elif [ "$TASK" = "antmaze" ]; then
-  for level in umaze-v0 umaze-diverse-v0 medium-play-v0 medium-diverse-v0 large-play-v0 large-diverse-v0
+  # for level in umaze-v0 umaze-diverse-v0 medium-play-v0 medium-diverse-v0 large-play-v0 large-diverse-v0
+  # for level in umaze-diverse-v0 medium-play-v0
   # for level in medium-play-v0 large-diverse-v0
-  # for level in umaze-v0
+  for level in umaze-v0
   do
     CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --seed=${i}  --env=antmaze-${level} --eval_n_trajs=100 --eval_period=50 --n_epochs=1000 --algo_cfg.max_q_backup=True --algo_cfg.expectile=0.9 --algo_cfg.awr_temperature=$AWR_TEMP &
     sleep 1

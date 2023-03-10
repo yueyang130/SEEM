@@ -201,12 +201,22 @@ class MFTrainer(Trainer):
     if 'antmaze' in self._cfgs.env:
       norm_reward = False
 
-    # OPER constant: TODO
+    # OPER constant
     if self._env == ENV.Mujoco:
       ITER = 5
       STD = 2
       EPS = 0.1
-
+      BASE_PROB = 0
+    elif self._env == ENV.Antmaze:
+      ITER = 3
+      STD = 5
+      EPS = 0.1
+      BASE_PROB = 0.2
+    elif self._env == ENV.Kitchen or self._env == ENV.Adroit:
+      ITER = 4
+      STD = 0.5
+      EPS = 0.1
+      BASE_PROB = 0
 
     dataset = get_d4rl_dataset(
       eval_sampler.env,
@@ -231,7 +241,7 @@ class MFTrainer(Trainer):
         if self._cfgs.algo_cfg.loss_type in ['IQL', 'Rainbow']:
           # dataset["rewards"] -= 1
           pass
-        else:
+        else: 
           dataset["rewards"] = (dataset["rewards"] - 0.5) * 4
       else:
         min_r, max_r = np.min(dataset["rewards"]), np.max(dataset["rewards"])
@@ -244,7 +254,7 @@ class MFTrainer(Trainer):
     if self._cfgs.oper:
       if self._cfgs.priority=='return':
         dist = dataset._data['returns']
-        dist = (dist - dist.min()) / (dist.max() - dist.min())
+        dist = (dist - dist.min()) / (dist.max() - dist.min()) + BASE_PROB
         probs = dist / dist.sum()
       elif self._cfgs.priority=='adv':
         weight_list = []
