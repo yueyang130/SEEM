@@ -20,7 +20,7 @@ import gym
 import numpy as np
 import tensorflow as tf
 import tensorflow_datasets as tfds
-from acme import types
+# from acme import types
 # from acme.tf import utils as tf2_utils
 from dm_env import StepType
 from gym import spaces

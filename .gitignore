@@ -156,3 +156,4 @@ temp/
 
 .trunk/
 weights
+slurm_batch

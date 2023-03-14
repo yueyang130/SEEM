@@ -19,7 +19,7 @@ def update_target_network(main_params, target_params, tau):
     lambda x, y: tau * x + (1.0 - tau) * y, main_params, target_params
   )
 
-
+ 
 class DiffusionQL(Algo):
 
   @staticmethod
@@ -324,7 +324,7 @@ class DiffusionQL(Algo):
 
 
 
-  @partial(jax.jit, static_argnames=('self', 'policy_tgt_update', 'warmup_coef', 'qf_update'))
+  @partial(jax.jit, static_argnames=('self', 'policy_tgt_update', 'guide_warmup_coef', 'qf_update'))
   def _train_step(
     self, train_states, tgt_params, rng, batch, qf_batch, guide_warmup_coef, qf_update=False, policy_tgt_update=False, 
   ):
