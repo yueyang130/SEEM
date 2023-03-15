@@ -15,19 +15,19 @@ python main.py --env $env --seed $i --bc_eval=0
 To reproduce the main results of OPER-A in the paper, i.e., only prioritizing data for policy constraint and improvement terms, train on 5 th prioritized dataset by resampling or resampling:
 ```
 # resample
-python main.py --env $env --seed $i --weight_path $PATH --weight_num 3 --iter 5 --std=2.0 ---bc_eval=1 --resample --two_sampler
+python main.py --env $env --seed $i --weight_path $PATH --weight_num 3 --iter 5 --std=2.0 --bc_eval=1 --resample --two_sampler
 
 # reweight
-python main.py --env $env --seed $i --weight_path $PATH --weight_num 3 --iter 5 --std=2.0 ---bc_eval=1 --reweight --reweight_eval=0
+python main.py --env $env --seed $i --weight_path $PATH --weight_num 3 --iter 5 --std=2.0 --bc_eval=1 --reweight --reweight_eval=0
 ```
 
 To prioritize data for all terms, run the code:
 ```
 # resample
-python main.py --env $env --seed $i --weight_path $PATH --weight_num 3 --iter 5 --std=2.0 ---bc_eval=1 --resampler
+python main.py --env $env --seed $i --weight_path $PATH --weight_num 3 --iter 5 --std=2.0 --bc_eval=1 --resampler
 
 # reweight
-python main.py --env $env --seed $i --weight_path $PATH --weight_num 3 --iter 5 --std=2.0 ---bc_eval=1 --reweight
+python main.py --env $env --seed $i --weight_path $PATH --weight_num 3 --iter 5 --std=2.0 --bc_eval=1 --reweight
 ```
 
 To reproduce the main results of OPER-R in the paper, run the code:
