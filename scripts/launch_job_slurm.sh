@@ -3,7 +3,7 @@
 export $(env | grep -v "BASH_" | cut -d= -f1)
 
 PARTITION="${PARTITION:-RTX3090}"
-NODE="${NODE:-node06}"
+NODE="${NODE:-node07}"
 
 file_num=0
 command_num=0
@@ -28,7 +28,9 @@ done
 
 # 如果最后只有一条命令，需要将该命令加入到最后一个文件中
 if [ $((command_num%2)) -ne 0 ]; then
+    echo "wait" >> "${file_dir}/${file_prefix}_${file_num}.sh"
     chmod +x "${file_dir}/${file_prefix}_${file_num}.sh"
+    ((file_num++))
 fi
 
 # 使用 srun 命令运行所有以 "${file_prefix}" 为前缀的 .sh 文件

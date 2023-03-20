@@ -324,7 +324,8 @@ class DiffusionQL(Algo):
 
 
 
-  @partial(jax.jit, static_argnames=('self', 'policy_tgt_update', 'guide_warmup_coef', 'qf_update'))
+  # @partial(jax.jit, static_argnames=('self', 'policy_tgt_update', 'guide_warmup_coef', 'qf_update'))
+  @partial(jax.jit, static_argnames=('self', 'policy_tgt_update', 'qf_update'))
   def _train_step(
     self, train_states, tgt_params, rng, batch, qf_batch, guide_warmup_coef, qf_update=False, policy_tgt_update=False, 
   ):
