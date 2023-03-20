@@ -46,9 +46,10 @@ def multiple_action_q_function(forward):
       observations = extend_and_repeat(observations, 1, actions.shape[1])
       observations = observations.reshape(-1, observations.shape[-1])
       actions = actions.reshape(-1, actions.shape[-1])
-    q_values = forward(self, observations, actions, **kwargs)
+    q_values = forward(self, observations, actions, **kwargs)  # (batch_size * repeat, num_atoms)
     if multiple_actions:
-      q_values = q_values.reshape(batch_size, -1)
+      num_atoms = q_values.shape[-1]
+      q_values = q_values.reshape(batch_size, -1, num_atoms)
     return q_values
 
   return wrapped

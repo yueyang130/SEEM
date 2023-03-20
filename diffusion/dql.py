@@ -12,7 +12,7 @@ from utilities.jax_utils import mse_loss, next_rng, value_and_multi_grad
 
 from diffusion.diffusion import GaussianDiffusion
 import distrax
-
+from algos.distributional_rl import QRAgent, C51Agent
 
 def update_target_network(main_params, target_params, tau):
   return jax.tree_map(
@@ -73,7 +73,12 @@ class DiffusionQL(Algo):
     cfg.crr_beta = 1.0
     cfg.awr_temperature = 3.0
 
-
+    # distributional RL hps
+    # Following D4PG and QR-DDPG, use 51 bins for c51 and 201 bins for QR
+    cfg.use_dist_rl = False
+    cfg.dist_type = 'qr'  # c51 / qr
+    cfg.num_atoms = 201  
+  
     # for dpm-solver
     cfg.dpm_steps = 15
     cfg.dpm_t_end = 0.001
@@ -171,6 +176,15 @@ class DiffusionQL(Algo):
     )
     self._model_keys = ('policy', 'qf1', 'qf2', 'vf', 'policy_dist')
 
+    # set up distributional RL critic agent
+    if self.config.use_dist_rl:
+      if self.config.dist_type == 'qr':
+        self.dist_agent = QRAgent(self.qf, self.policy, self.config.num_atoms, self.config.discount)
+      elif self.config.dist_type == 'c51':
+        # TODO: set Vmin and Vmax
+        self.dist_agent = C51Agent(self.qf, self.policy, None, None, self.config.num_atoms, self.config.discount)
+      else:
+        raise NotImplementedError(f'distributional RL {self.config.dist_type}')
 
   def get_value_loss(self, batch, tgt_params):
     def expectile_value_loss_fn(train_params):
@@ -259,7 +273,14 @@ class DiffusionQL(Algo):
 
       qf_loss = qf1_loss + qf2_loss
       return (qf1_loss, qf2_loss), locals()
-
+    
+    def dist_critic_loss_fn(params, tgt_params, rng):
+      return self.dist_agent.dist_critic_loss(
+        (params['qf1'], params['qf2']), (tgt_params['qf1'], tgt_params['qf2']), tgt_params['policy'], 
+        batch['observations'], actions = batch['actions'], rewards = batch['rewards'],
+        next_obs = batch['next_observations'], dones = batch['dones'], rng = rng
+      )
+    
     def expectile_critic_loss_fn(train_params, tgt_params, rng):
       observations = batch['observations']
       actions = batch['actions']
@@ -283,7 +304,10 @@ class DiffusionQL(Algo):
     if self.config.loss_type == 'IQL':
       return expectile_critic_loss_fn
     else: # For rainbow, also use TD3 loss
-      return critic_loss_fn
+      if self.config.use_dist_rl:
+        return dist_critic_loss_fn
+      else:
+        return critic_loss_fn
 
   def get_diff_loss(self, batch):
 
@@ -347,6 +371,8 @@ class DiffusionQL(Algo):
       # Calculate guide loss
       def fn(key):
         q = self.qf.apply(params[key], observations, pred_astart)
+        if self.config.use_dist_rl:
+          q = self.dist_agent.dist2value(q)
         lmbda = 1 / jax.lax.stop_gradient(jnp.abs(q).mean())
         policy_loss = -lmbda * q.mean()
         return lmbda, policy_loss

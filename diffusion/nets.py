@@ -197,6 +197,7 @@ class Critic(nn.Module):
   act: callable = mish
   use_layer_norm: bool = False
   orthogonal_init: bool = False
+  out_dim: int = 1
 
   @nn.compact
   @multiple_action_q_function
@@ -218,14 +219,17 @@ class Critic(nn.Module):
 
     if self.orthogonal_init:
       x = nn.Dense(
-        1,
+        self.out_dim,
         kernel_init=jax.nn.initializers.orthogonal(jnp.sqrt(2.0)),
         bias_init=jax.nn.initializers.zeros,
       )(x)
     else:
-      x = nn.Dense(1)(x)
-    return jnp.squeeze(x, -1)
-
+      x = nn.Dense(self.out_dim)(x)
+    if self.out_dim == 1:
+      return jnp.squeeze(x, -1)
+    else:
+      return x
+    
   @property
   def input_size(self):
     return self.observation_dim + self.action_dim

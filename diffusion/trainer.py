@@ -74,7 +74,7 @@ FLAGS_DEF = define_flags_with_default(
 class SamplerPolicy(object):
 
   def __init__(
-    self, policy, qf=None, mean=0, std=1, ensemble=False, act_method='ddpm'
+    self, policy, qf=None, mean=0, std=1, ensemble=False, act_method='ddpm', dist2value=lambda x: x
   ):
     self.policy = policy
     self.qf = qf
@@ -82,6 +82,7 @@ class SamplerPolicy(object):
     self.std = std
     self.num_samples = 50
     self.act_method = act_method
+    self.dist2value = dist2value
 
   def update_params(self, params):
     self.params = params
@@ -143,6 +144,7 @@ class SamplerPolicy(object):
     )
     q1 = self.qf.apply(params['qf1'], observations, actions)
     q2 = self.qf.apply(params['qf2'], observations, actions)
+    q1, q2 = self.dist2value(q1), self.dist2value(q2)
     q = jnp.minimum(q1, q2)
 
     idx = jax.random.categorical(rng, q)
@@ -326,9 +328,11 @@ class DiffusionTrainer(MFTrainer):
     self._agent = self._algo(self._cfgs.algo_cfg, self._policy, self._qf, self._vf, self._policy_dist)
 
     # setup sampler policy
-    self._sampler_policy = SamplerPolicy(self._agent.policy, self._agent.qf)
+    dist2value_fn = self._agent.dist_agent.dist2value if self._cfgs.algo_cfg.use_dist_rl else lambda x: x
+    self._sampler_policy = SamplerPolicy(self._agent.policy, self._agent.qf, dist2value=dist2value_fn)
 
   def _setup_qf(self):
+    qf_out_dim = self._cfgs.algo_cfg.num_atoms - 1 if self._cfgs.algo_cfg.use_dist_rl else 1
     qf = Critic(
       self._observation_dim,
       self._action_dim,
@@ -336,6 +340,7 @@ class DiffusionTrainer(MFTrainer):
       use_layer_norm=self._cfgs.qf_layer_norm,
       act=self._act_fn,
       orthogonal_init=self._cfgs.orthogonal_init,
+      out_dim=qf_out_dim
     )
     return qf
   
