@@ -5,6 +5,7 @@ export WANDB_API_KEY=3e0863e2d8f819730b85529bd24b3ebbb96d0eb3
 TASK="${TASK:-gym}" # d4rl / antmaze / rl_unplugged
 ALPHA="${ALPHA:-0.25}"
 GUIDE_COEF="${GUIDE_COEF:-1.0}"
+DIFF_COEF="${DIFF_COEF:-1.0}"
 
 GPU="${GPU:-0}"
 ALGO="${ALGO:-DiffQL}"
@@ -38,7 +39,7 @@ OPER="${OPER:-False}"
 TWO_SAMPLER="${TWO_SAMPLER:-False}"
 PRIORITY="${PRIORITY:-return}"
 DIST_RL="${DIST_RL:-False}"
-
+MAX_Q_BACKUP="${MAX_Q_BACKUP:-True}" # only for antmaze
 
 if [ "$SAMPLE_METHOD" = "ddpm" ];
 then
@@ -71,7 +72,7 @@ then
 fi
 
 BASE_CMD="WANDB_API_KEY=$WANDB_API_KEY python -m diffusion.trainer --logging.output_dir=./experiment_output --logging.online --logging.notes=$NOTES --algo=${ALGO} --obs_norm=${OBS_NORM} --algo_cfg.loss_type=${LOSS_TYPE} --algo_cfg.use_expectile=${USE_EXPECTILE}   --algo_cfg.expectile_q=${EXPECTILE_Q} --sample_method=${SAMPLE_METHOD} --algo_cfg.crr_avg_fn=${AVG_FN} --algo_cfg.crr_fn=${CRR_FN} --algo_cfg.adv_norm=${ADV_NORM} --qf_layer_norm=${QF_LAYER_NORM} --policy_layer_norm=${POLICY_LAYER_NORM} --algo_cfg.num_timesteps=${NUM_T} --norm_reward=${NORM_REW} --reward_scale=${REW_SCALE} --reward_bias=${REW_BIAS} --algo_cfg.lr_decay=${LR_DECAY} --algo_cfg.fixed_std=${FIXED_STD} --orthogonal_init=${ORTHOG_INIT} \
---algo_cfg.crr_weight_mode=$WEIGHT_MODE --algo_cfg.guide_coef=$GUIDE_COEF --algo_cfg.trust_region_target=${TRUST_REG} --algo_cfg.target_clip=$TARGET_CLIP --algo_cfg.MAX_Q=$MAX_Q  --algo_cfg.diff_coef=1.0  --algo_cfg.alpha=$ALPHA --algo_cfg.guide_warmup=${GUIDE_WARMUP} --oper=$OPER --two_sampler=$TWO_SAMPLER --priority=$PRIORITY --algo_cfg.use_dist_rl=$DIST_RL"
+--algo_cfg.crr_weight_mode=$WEIGHT_MODE --algo_cfg.guide_coef=$GUIDE_COEF --algo_cfg.trust_region_target=${TRUST_REG} --algo_cfg.target_clip=$TARGET_CLIP --algo_cfg.MAX_Q=$MAX_Q  --algo_cfg.diff_coef=$DIFF_COEF  --algo_cfg.alpha=$ALPHA --algo_cfg.guide_warmup=${GUIDE_WARMUP} --oper=$OPER --two_sampler=$TWO_SAMPLER --priority=$PRIORITY --algo_cfg.use_dist_rl=$DIST_RL"
 
 
 
@@ -83,20 +84,19 @@ for (( i=$START; i<=${RUNS}; i++ ))
 do
 if [ "$TASK" = "gym" ];
 then
-  # for env in halfcheetah-medium-expert halfcheetah-medium
-  # do
-  #   echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --algo=${ALGO} --seed=${i} --env=${env}-v2 --n_epochs=2000 &"
-  #   sleep 1
-  # done
-  # for env in halfcheetah hopper walker2d
-  for env in hopper walker2d
+  for env in halfcheetah-medium-expert halfcheetah-medium
   do
-  for level in medium medium-replay medium-expert
-  do
-    echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --algo=${ALGO} --seed=${i} --env=${env}-${level}-v2 --n_epochs=2000 &"
+    echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --algo=${ALGO} --seed=${i} --env=${env}-v2 --n_epochs=2000 &"
     sleep 1
   done
-  done
+  # for env in halfcheetah hopper walker2d
+  # do
+  # for level in medium medium-replay medium-expert
+  # do
+  #   echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --algo=${ALGO} --seed=${i} --env=${env}-${level}-v2 --n_epochs=2000 &"
+  #   sleep 1
+  # done
+  # done
 elif [ "$TASK" = "rl_unplugged" ]; then
   for env in finger_turn_hard humanoid_run cartpole_swingup cheetah_run fish_swim walker_stand walker_walk
   do
@@ -105,11 +105,10 @@ elif [ "$TASK" = "rl_unplugged" ]; then
   done
 elif [ "$TASK" = "antmaze" ]; then
   # for level in umaze-v0 umaze-diverse-v0 medium-play-v0 medium-diverse-v0 large-play-v0 large-diverse-v0
-  # for level in umaze-diverse-v0 medium-play-v0
+  for level in umaze-diverse-v0 large-diverse-v0
   # for level in medium-play-v0 large-diverse-v0
-  for level in large-diverse-v0
   do
-    echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --seed=${i}  --env=antmaze-${level} --eval_n_trajs=100 --eval_period=50 --n_epochs=1000 --algo_cfg.max_q_backup=True --algo_cfg.expectile=0.9 --algo_cfg.awr_temperature=$AWR_TEMP &"
+    echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --seed=${i}  --env=antmaze-${level} --eval_n_trajs=100 --eval_period=50 --n_epochs=1000 --algo_cfg.max_q_backup=$MAX_Q_BACKUP --algo_cfg.expectile=0.9 --algo_cfg.awr_temperature=$AWR_TEMP &"
     sleep 1
   done
 elif [ "$TASK" = "kitchen" ]; then

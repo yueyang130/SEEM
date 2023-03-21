@@ -179,10 +179,12 @@ class DiffusionQL(Algo):
     # set up distributional RL critic agent
     if self.config.use_dist_rl:
       if self.config.dist_type == 'qr':
-        self.dist_agent = QRAgent(self.qf, self.policy, self.config.num_atoms, self.config.discount)
+        self.dist_agent = QRAgent(self.qf, self.policy, self.config.num_atoms, self.config.discount, 
+                                  self.config.max_q_backup, self.config.max_q_backup_samples, self.config.max_q_backup_topk)
       elif self.config.dist_type == 'c51':
         # TODO: set Vmin and Vmax
-        self.dist_agent = C51Agent(self.qf, self.policy, None, None, self.config.num_atoms, self.config.discount)
+        self.dist_agent = C51Agent(self.qf, self.policy, None, None, self.config.num_atoms, self.config.discount,
+                                   self.config.max_q_backup, self.config.max_q_backup_samples, self.config.max_q_backup_topk)
       else:
         raise NotImplementedError(f'distributional RL {self.config.dist_type}')
 

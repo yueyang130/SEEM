@@ -2,10 +2,13 @@ import jax
 import jax.numpy as jnp
 
 class DistAgent:
-    def __init__(self, qf, policy, gamma) -> None:
+    def __init__(self, qf, policy, gamma, max_q_backup, max_q_backup_samples, max_q_backup_topk) -> None:
         self.qf = qf
         self.policy = policy
         self.gamma = gamma
+        self.max_q_backup = max_q_backup
+        self.max_q_backup_samples = max_q_backup_samples
+        self.max_q_backup_topk = max_q_backup_topk
     
     def dist_critic_loss(self, qf_params, tgt_params, policy_params, obs, actions, rewards, next_obs, dones):
         raise NotImplementedError
@@ -15,8 +18,8 @@ class DistAgent:
 
 
 class C51Agent(DistAgent):
-    def __init__(self, qf, policy, vmin, vmax, num_atoms, gamma=0.99):
-        DistAgent.__init__(self, qf, policy, gamma)
+    def __init__(self, qf, policy, vmin, vmax, num_atoms, gamma, max_q_backup, max_q_backup_samples, max_q_backup_topk):
+        DistAgent.__init__(self, qf, policy, gamma, max_q_backup, max_q_backup_samples, max_q_backup_topk)
         
         # c51
         self.vmin = vmin
@@ -94,8 +97,8 @@ class C51Agent(DistAgent):
 
 
 class QRAgent(DistAgent):
-    def __init__(self, qf, policy, num_quantiles=51, gamma=0.99):
-        DistAgent.__init__(self, qf, policy, gamma)
+    def __init__(self, qf, policy, num_quantiles, gamma, max_q_backup, max_q_backup_samples, max_q_backup_topk):
+        DistAgent.__init__(self, qf, policy, gamma, max_q_backup, max_q_backup_samples, max_q_backup_topk)
         self.num_quantiles = num_quantiles
         
     def dist_critic_loss(self, qf_params, tgt_params, policy_params, obs, actions, rewards, next_obs, dones, rng):
@@ -118,18 +121,40 @@ class QRAgent(DistAgent):
         quantiles1 = self.qf.apply(qf_params[0], obs, actions)  # shape: (batch_size, num_quantiles)
         quantiles2 = self.qf.apply(qf_params[1], obs, actions)  # shape: (batch_size, num_quantiles)
 
-        # Compute next actions
-        next_actions = self.policy.apply(policy_params, rng, next_obs)
+        if self.max_q_backup:
+            next_action = self.policy.apply(policy_params, rng, next_obs, repeat=self.max_q_backup_samples)
+            next_action = jnp.clip(next_action, -self.policy.max_action, self.policy.max_action)
+            next_obs_repeat = jnp.repeat(
+                jnp.expand_dims(next_obs, axis=1), self.max_q_backup_samples, axis=1
+            )
+            next_quantiles1 = self.qf.apply(tgt_params[0], next_obs_repeat, next_action)  # shape: (batch_size, repeat, num_quantiles)
+            next_quantiles2 = self.qf.apply(tgt_params[1], next_obs_repeat, next_action)  # shape: (batch_size, repeat, num_quantiles)
+            tgt_q1, tgt_q2 = next_quantiles1.mean(axis=-1), next_quantiles2.mean(axis=-1) # shape: (batch_size, repeat)
+            
+            tk = self.max_q_backup_topk
+            batch_idx = jax.vmap(lambda x, i: x[i], 0)
+            next_quantile1_max = batch_idx(next_quantiles1, jnp.argsort(tgt_q1, axis=-1)[:, -tk]) # shape: (batch_size, num_quantiles)
+            next_quantile2_max = batch_idx(next_quantiles2, jnp.argsort(tgt_q2, axis=-1)[:, -tk])
+            
+            # Double Q-learning
+            cond = jnp.repeat(jnp.expand_dims(
+                next_quantile1_max.mean(axis=-1) < next_quantile2_max.mean(axis=-1), axis=-1), self.num_quantiles - 1, axis=-1
+            )
+            next_quantiles = jnp.where(cond, next_quantile1_max, next_quantile2_max) # shape: (batch_size, num_quantiles)
+        else:        
+            # Compute next actions
+            next_actions = self.policy.apply(policy_params, rng, next_obs)
 
-        # Compute next quantiles
-        next_quantiles1 = self.qf.apply(tgt_params[0], next_obs, next_actions)  # shape: (batch_size, num_quantiles)
-        next_quantiles2 = self.qf.apply(tgt_params[1], next_obs, next_actions)  # shape: (batch_size, num_quantiles)
-    
-        # Double Q-learning
-        cond = jnp.repeat(jnp.expand_dims(
-            next_quantiles1.mean(axis=-1) < next_quantiles2.mean(axis=-1), axis=-1), self.num_quantiles - 1, axis=-1
-        )
-        next_quantiles = jnp.where(cond, next_quantiles1, next_quantiles2)
+            # Compute next quantiles
+            next_quantiles1 = self.qf.apply(tgt_params[0], next_obs, next_actions)  # shape: (batch_size, num_quantiles)
+            next_quantiles2 = self.qf.apply(tgt_params[1], next_obs, next_actions)  # shape: (batch_size, num_quantiles)
+            tgt_q1, tgt_q2 = next_quantiles1.mean(axis=-1), next_quantiles2.mean(axis=-1)
+            
+            # Double Q-learning
+            cond = jnp.repeat(jnp.expand_dims(
+                tgt_q1 < tgt_q2, axis=-1), self.num_quantiles - 1, axis=-1
+            )
+            next_quantiles = jnp.where(cond, next_quantiles1, next_quantiles2)
 
         # Compute target quantiles
         target_quantiles = rewards[:, None] + (1 - dones)[:, None] * self.gamma * next_quantiles
@@ -155,8 +180,7 @@ class QRAgent(DistAgent):
         qf_loss = qr_loss1 + qr_loss2
         qf1_loss, qf2_loss = qr_loss1, qr_loss2
         cur_q1, cur_q2 = quantiles1.mean(axis=-1), quantiles2.mean(axis=-1)
-        tgt_q1, tgt_q2 = next_quantiles1.mean(axis=-1), next_quantiles2.mean(axis=-1)
-        tgt_q = jnp.minimum(tgt_q1, tgt_q2)
+        tgt_q = target_quantiles.mean(axis=-1)
         
         return (qr_loss1, qr_loss2), locals()
     
