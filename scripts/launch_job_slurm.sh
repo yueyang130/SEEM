@@ -3,7 +3,7 @@
 export $(env | grep -v "BASH_" | cut -d= -f1)
 
 PARTITION="${PARTITION:-RTX3090}"
-NODE="${NODE:-node07}"
+NODE="${NODE:-node06}"
 
 file_num=0
 command_num=0

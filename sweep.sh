@@ -83,3 +83,5 @@ ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.1 QF_LAYER_NORM=Tr
 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True bash scripts/launch_job_slurm.sh
 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0 QF_LAYER_NORM=True bash scripts/launch_job_slurm.sh
 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0 QF_LAYER_NORM=False bash scripts/launch_job_slurm.sh
+
+ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_ANNEAL=True QF_LAYER_NORM=True bash scripts/launch_job_slurm.sh

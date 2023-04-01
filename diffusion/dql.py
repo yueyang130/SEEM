@@ -4,6 +4,7 @@ from functools import partial
 import jax
 import jax.numpy as jnp
 import optax
+import math
 
 from flax.training.train_state import TrainState
 from ml_collections import ConfigDict
@@ -38,6 +39,7 @@ class DiffusionQL(Algo):
     cfg.max_q_backup_topk = 1
     cfg.max_q_backup_samples = 10
     cfg.guide_warmup = False
+    cfg.diff_annealing = False
 
     # learning related
     cfg.lr = 3e-4
@@ -353,16 +355,16 @@ class DiffusionQL(Algo):
   # @partial(jax.jit, static_argnames=('self', 'policy_tgt_update', 'guide_warmup_coef', 'qf_update'))
   @partial(jax.jit, static_argnames=('self', 'policy_tgt_update', 'qf_update'))
   def _train_step(
-    self, train_states, tgt_params, rng, batch, qf_batch, guide_warmup_coef, qf_update=False, policy_tgt_update=False, 
+    self, train_states, tgt_params, rng, batch, qf_batch, guide_warmup_coef, diff_coff, qf_update=False, policy_tgt_update=False, 
   ):
     if self.config.loss_type not in ['TD3', 'CRR', 'IQL', 'Rainbow']:
       raise NotImplementedError
 
     return getattr(self, f"_train_step_{self.config.loss_type.lower()}"
-                  )(train_states, tgt_params, rng, batch, qf_batch, guide_warmup_coef, qf_update, policy_tgt_update)
+                  )(train_states, tgt_params, rng, batch, qf_batch, guide_warmup_coef, diff_coff, qf_update, policy_tgt_update)
 
   def _train_step_rainbow(
-    self, train_states, tgt_params, rng, batch, qf_batch, guide_warmup_coef, qf_update=False, policy_tgt_update=False
+    self, train_states, tgt_params, rng, batch, qf_batch, guide_warmup_coef, diff_coff, qf_update=False, policy_tgt_update=False
   ):
     critic_loss_fn = self.get_critic_loss(qf_batch)
     diff_loss_fn = self.get_diff_loss(batch)
@@ -391,7 +393,7 @@ class DiffusionQL(Algo):
       diff_loss, terms, ts, pred_astart = diff_loss_fn(params, split_rng)
       td3_loss = direct_guide_loss_fn(params, tgt_params, rng, pred_astart)
 
-      policy_loss = self.config.diff_coef * diff_loss + \
+      policy_loss = diff_coff * diff_loss + \
             self.config.alpha * td3_loss * guide_warmup_coef
 
       return (policy_loss,), locals()
@@ -439,6 +441,7 @@ class DiffusionQL(Algo):
       direct_loss=aux_policy['td3_loss'],
       diff_loss=aux_policy['diff_loss'],
       guide_warmup_coef=guide_warmup_coef,
+      diff_coef=diff_coff,
       # lmbda=aux_policy['lmbda'].mean(),
       policy_grad_norm=optax.global_norm(grads_policy[0]['policy']),
       policy_weight_norm=optax.global_norm(train_states['policy'].params),
@@ -821,7 +824,7 @@ class DiffusionQL(Algo):
     qf_update = True
     self._train_states, self._tgt_params, metrics = self._train_step(
       self._train_states, self._tgt_params, next_rng(), batch, qf_batch,
-      self.guide_warmup_coef, qf_update, policy_tgt_update
+      self.guide_warmup_coef, self.diff_annealing_coef, qf_update, policy_tgt_update
     )
     return metrics
 
@@ -853,3 +856,15 @@ class DiffusionQL(Algo):
         # return 0.0
       else:
         return 1.0
+      
+  @property
+  def diff_annealing_coef(self):
+    if self.config.diff_annealing:
+      if self._total_steps < self.config.train_steps // 4:
+          return self.config.diff_coef
+      else:
+          t = self._total_steps - self.config.train_steps // 4
+          T = self.config.train_steps - self.config.train_steps // 4
+          return self.config.diff_coef * ( 0.505 + 0.495 * math.cos(math.pi * t / T))
+    else:
+      return self.config.diff_coef
