@@ -86,19 +86,23 @@ for (( i=$START; i<=${RUNS}; i++ ))
 do
 if [ "$TASK" = "gym" ];
 then
-  for env in halfcheetah-medium-expert halfcheetah-medium
-  do
-    echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --algo=${ALGO} --seed=${i} --env=${env}-v2 --n_epochs=20 &"
-    sleep 1
-  done
-  # for env in halfcheetah hopper walker2d
+  # for env in halfcheetah-medium-expert halfcheetah-medium
   # do
-  # for level in medium medium-replay medium-expert
-  # do
-  #   echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --algo=${ALGO} --seed=${i} --env=${env}-${level}-v2 --n_epochs=2000 &"
+  #   echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --algo=${ALGO} --seed=${i} --env=${env}-v2 --n_epochs=2000 &"
   #   sleep 1
   # done
-  # done
+  # for env in halfcheetah hopper walker2d
+  for env in hopper
+  do
+  # for level in medium medium-replay medium-expert
+  for level in medium-replay
+  do
+    echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --algo=${ALGO} --seed=${i} --env=${env}-${level}-v2 --n_epochs=2000 &"
+    sleep 1
+  done
+  # echo "wait"
+  wait
+  done
 elif [ "$TASK" = "rl_unplugged" ]; then
   for env in finger_turn_hard humanoid_run cartpole_swingup cheetah_run fish_swim walker_stand walker_walk
   do

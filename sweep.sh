@@ -84,4 +84,11 @@ ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=T
 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0 QF_LAYER_NORM=True bash scripts/launch_job_slurm.sh
 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0 QF_LAYER_NORM=False bash scripts/launch_job_slurm.sh
 
-ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_ANNEAL=True QF_LAYER_NORM=True bash scripts/launch_job_slurm.sh
+eval "$(GPU=1 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_ANNEAL=False QF_LAYER_NORM=True bash scripts/launch_job.sh)"
+
+eval "$(GPU=1 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=50 bash scripts/launch_job.sh)"
+eval "$(GPU=0 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job.sh)"
+eval "$(GPU=1 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=0.1 bash scripts/launch_job.sh)"
+eval "$(GPU=1 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01  bash scripts/launch_job.sh)"
+eval "$(GPU=0 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=1.0  bash scripts/launch_job.sh)"
+eval "$(GPU=0 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=1.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job.sh)"
