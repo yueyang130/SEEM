@@ -41,6 +41,7 @@ FLAGS_DEF = define_flags_with_default(
   save_model=False,
   seed=42,
   batch_size=256,
+  lb_rate=1,
   reward_scale=1.0,
   reward_bias=0.0,
   clip_action=0.999,
@@ -100,7 +101,7 @@ class SamplerPolicy(object):
   ):
     rng, key = jax.random.split(rng)
     actions = self.policy.apply(
-      params["policy"], key, observations, deterministic, repeat=num_samples
+      params["policy"], key, observations, deterministic, repeat=num_samples,
     )
     q1 = self.qf.apply(params['qf1'], observations, actions)
     q2 = self.qf.apply(params['qf2'], observations, actions)
@@ -306,8 +307,13 @@ class DiffusionTrainer(MFTrainer):
       self._wandb_logger.save_pickle(save_data, "model_final.pkl")
 
   def _setup(self):
-
+      
     set_random_seed(self._cfgs.seed)
+    
+    if self._cfgs.lb_rate != 1:
+      self._cfgs.batch_size *= self._cfgs.lb_rate
+      self._cfgs.algo_cfg.lr *= self._cfgs.lb_rate ** 0.5
+    
     # setup logger
     self._wandb_logger = self._setup_logger()
 
@@ -326,7 +332,8 @@ class DiffusionTrainer(MFTrainer):
 
     # setup agent
     self._agent = self._algo(self._cfgs.algo_cfg, self._policy, self._qf, self._vf, self._policy_dist)
-
+      
+      
     # setup sampler policy
     dist2value_fn = self._agent.dist_agent.dist2value if self._cfgs.algo_cfg.use_dist_rl else lambda x: x
     self._sampler_policy = SamplerPolicy(self._agent.policy, self._agent.qf, dist2value=dist2value_fn)

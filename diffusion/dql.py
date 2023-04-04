@@ -110,7 +110,7 @@ class DiffusionQL(Algo):
             next_rng(),
             jnp.zeros((10, self.observation_dim)),
         )
-
+        
         def get_lr(lr_decay=False):
             if lr_decay is True:
                 return optax.cosine_decay_schedule(

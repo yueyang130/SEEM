@@ -44,7 +44,6 @@ def get_named_beta_schedule(schedule_name, num_diffusion_timesteps):
   elif schedule_name == "cosine":
     return betas_for_alpha_bar(
       num_diffusion_timesteps,
-      lambda t: math.cos((t + 0.008) / 1.008 * math.pi / 2)**2,
     )
   elif schedule_name == "vp":
     T = num_diffusion_timesteps
