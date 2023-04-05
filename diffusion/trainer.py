@@ -85,8 +85,9 @@ class SamplerPolicy(object):
     self.act_method = act_method
     self.dist2value = dist2value
 
-  def update_params(self, params):
+  def update_params(self, params, tgt_params):
     self.params = params
+    self.tgt_params = tgt_params
     return self
 
   @partial(jax.jit, static_argnames=("self", "deterministic"))
@@ -132,7 +133,7 @@ class SamplerPolicy(object):
 
   @partial(jax.jit, static_argnames=("self", "deterministic", "num_samples"))
   def dpmensemble_act(
-    self, params, rng, observations, deterministic, num_samples
+    self, params, tgt_params, rng, observations, deterministic, num_samples
   ):
     rng, key = jax.random.split(rng)
     actions = self.policy.apply(
@@ -143,8 +144,8 @@ class SamplerPolicy(object):
       repeat=num_samples,
       method=self.policy.dpm_sample,
     )
-    q1 = self.qf.apply(params['qf1'], observations, actions)
-    q2 = self.qf.apply(params['qf2'], observations, actions)
+    q1 = self.qf.apply(tgt_params['qf1'], observations, actions)
+    q2 = self.qf.apply(tgt_params['qf2'], observations, actions)
     q1, q2 = self.dist2value(q1), self.dist2value(q2)
     q = jnp.minimum(q1, q2)
 
@@ -184,7 +185,7 @@ class SamplerPolicy(object):
   def __call__(self, observations, deterministic=False):
     observations = (observations - self.mean) / self.std
     actions = getattr(self, f"{self.act_method}_act")(
-      self.params, next_rng(), observations, deterministic, self.num_samples
+      self.params, self.tgt_params, next_rng(), observations, deterministic, self.num_samples
     )
     if isinstance(actions, tuple):
       actions = actions[0]
@@ -253,7 +254,7 @@ class DiffusionTrainer(MFTrainer):
             if self._cfgs.sample_method == 'ddim':
               self._sampler_policy.act_method = "ensemble"
             trajs = self._eval_sampler.sample(
-              self._sampler_policy.update_params(self._agent.train_params),
+              self._sampler_policy.update_params(self._agent.train_params, self._agent._tgt_params),
               self._cfgs.eval_n_trajs,
               deterministic=True,
               obs_statistics=(self._obs_mean, self._obs_std, self._obs_clip),

@@ -80,7 +80,14 @@ class DiffusionQL(Algo):
         cfg.use_dist_rl = False
         cfg.dist_type = 'qr'  # c51 / qr
         cfg.num_atoms = 201  
-    
+        
+        # reset
+        cfg.reset_q = False
+        cfg.reset_mode = 'all' # all / last / SP
+        cfg.reset_actor = False
+        cfg.reset_interval = 1000000
+        cfg.max_tgt_q = False # update actor by maximizing target q
+        
         # for dpm-solver
         cfg.dpm_steps = 15
         cfg.dpm_t_end = 0.001
@@ -353,18 +360,18 @@ class DiffusionQL(Algo):
 
 
     # @partial(jax.jit, static_argnames=('self', 'policy_tgt_update', 'guide_warmup_coef', 'qf_update'))
-    @partial(jax.jit, static_argnames=('self', 'policy_tgt_update', 'qf_update'))
+    @partial(jax.jit, static_argnames=('self', 'policy_tgt_update', 'qf_update', 'q_tgt_update'))
     def _train_step(
-        self, train_states, tgt_params, rng, batch, qf_batch, guide_warmup_coef, diff_coff, qf_update=False, policy_tgt_update=False, 
+        self, train_states, tgt_params, rng, batch, qf_batch, guide_warmup_coef, diff_coff, qf_update=False, policy_tgt_update=False, q_tgt_update=True,
     ):
         if self.config.loss_type not in ['TD3', 'CRR', 'IQL', 'Rainbow']:
             raise NotImplementedError
 
         return getattr(self, f"_train_step_{self.config.loss_type.lower()}"
-                                    )(train_states, tgt_params, rng, batch, qf_batch, guide_warmup_coef, diff_coff, qf_update, policy_tgt_update)
+                                    )(train_states, tgt_params, rng, batch, qf_batch, guide_warmup_coef, diff_coff, qf_update, policy_tgt_update, q_tgt_update)
 
     def _train_step_rainbow(
-        self, train_states, tgt_params, rng, batch, qf_batch, guide_warmup_coef, diff_coff, qf_update=False, policy_tgt_update=False
+        self, train_states, tgt_params, rng, batch, qf_batch, guide_warmup_coef, diff_coff, qf_update=False, policy_tgt_update=False, q_tgt_update=True
     ):
         critic_loss_fn = self.get_critic_loss(qf_batch)
         diff_loss_fn = self.get_diff_loss(batch)
@@ -374,7 +381,10 @@ class DiffusionQL(Algo):
 
             # Calculate guide loss
             def fn(key):
-                q = self.qf.apply(params[key], observations, pred_astart)
+                if self.config.max_tgt_q:
+                    q = self.qf.apply(tgt_params[key], observations, pred_astart)
+                else:
+                    q = self.qf.apply(params[key], observations, pred_astart)
                 if self.config.use_dist_rl:
                     q = self.dist_agent.dist2value(q)
                 lmbda = 1 / jax.lax.stop_gradient(jnp.abs(q).mean())
@@ -429,12 +439,14 @@ class DiffusionQL(Algo):
             tgt_params['policy'] = update_target_network(
                 train_states['policy'].params, tgt_params['policy'], self.config.tau
             )
-        tgt_params['qf1'] = update_target_network(
-            train_states['qf1'].params, tgt_params['qf1'], self.config.tau
-        )
-        tgt_params['qf2'] = update_target_network(
-            train_states['qf2'].params, tgt_params['qf2'], self.config.tau
-        )
+            
+        if q_tgt_update:
+            tgt_params['qf1'] = update_target_network(
+                train_states['qf1'].params, tgt_params['qf1'], self.config.tau
+            )
+            tgt_params['qf2'] = update_target_network(
+                train_states['qf2'].params, tgt_params['qf2'], self.config.tau
+            )
 
         metrics = dict(
             policy_loss=aux_policy['policy_loss'],
@@ -853,16 +865,49 @@ class DiffusionQL(Algo):
 
 
     def train(self, batch, qf_batch):
-        self._total_steps += 1
         policy_tgt_update = (
             self._total_steps > 1000 and
             self._total_steps % self.config.policy_tgt_freq == 0
         )
         qf_update = True
+        # reset
+        if self._total_steps > 0 and self._total_steps % self.config.reset_interval == 0:
+            if self.config.reset_q:
+                qf1_params = self.qf.init(
+                    next_rng(),
+                    jnp.zeros((10, self.observation_dim)),
+                    jnp.zeros((10, self.action_dim)),
+                )
+                qf2_params = self.qf.init(
+                    next_rng(),
+                    jnp.zeros((10, self.observation_dim)),
+                    jnp.zeros((10, self.action_dim)),
+                )
+                self._train_states['qf1'] = self._train_states['qf1'].replace(params=qf1_params)
+                self._train_states['qf2'] = self._train_states['qf2'].replace(params=qf2_params)
+            if self.config.reset_actor:
+                policy_params = self.policy.init(
+                    next_rng(),
+                    next_rng(),
+                    jnp.zeros((10, self.observation_dim)),
+                )
+                policy_dist_params = self.policy_dist.init(
+                    next_rng(), jnp.zeros((10, self.action_dim))
+                )
+                self._train_states['policy'] = self._train_states['policy'].replace(params=policy_params)
+                self._train_states['policy_dist'] = self._train_states['policy_dist'].replace(params=policy_dist_params)
+            
+        q_tgt_update = True
+        if self.config.reset_q:
+            reset_num = int(self._total_steps // self.config.reset_interval)
+            if reset_num > 0 and self._total_steps % self.config.reset_interval < 100000:
+                q_tgt_update = False
+        
         self._train_states, self._tgt_params, metrics = self._train_step(
             self._train_states, self._tgt_params, next_rng(), batch, qf_batch,
-            self.guide_warmup_coef, self.diff_annealing_coef, qf_update, policy_tgt_update
+            self.guide_warmup_coef, self.diff_annealing_coef, qf_update, policy_tgt_update, q_tgt_update
         )
+        self._total_steps += 1
         return metrics
 
     @property
