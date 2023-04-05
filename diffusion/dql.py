@@ -147,7 +147,7 @@ class DiffusionQL(Algo):
             next_rng(), jnp.zeros((10, self.action_dim))
         )
         self._train_states['policy_dist'] = TrainState.create(
-            params=policy_dist_params, tx=get_optimizer(), apply_fn=None
+            params=policy_dist_params, tx=get_optimizer(weight_decay=0.0), apply_fn=None
         )
 
         qf1_params = self.qf.init(
@@ -506,6 +506,8 @@ class DiffusionQL(Algo):
                 qf1_layer1_b_grad_norm=optax.global_norm(grads_qf[0]['qf1']['params']['Dense_1']['bias']),
                 qf1_layer0_w_grad_norm=optax.global_norm(grads_qf[0]['qf1']['params']['Dense_0']['kernel']),
                 qf1_layer0_b_grad_norm=optax.global_norm(grads_qf[0]['qf1']['params']['Dense_0']['bias']),
+                tgt_qf1_weight_norm=optax.global_norm(tgt_params['qf1']),
+                tgt_qf2_weight_norm=optax.global_norm(tgt_params['qf1']),
             ))
 
         return train_states, tgt_params, metrics
@@ -592,6 +594,7 @@ class DiffusionQL(Algo):
             qf1_weight_norm=optax.global_norm(train_states['qf1'].params),
             qf2_weight_norm=optax.global_norm(train_states['qf2'].params),
             policy_weight_norm=optax.global_norm(train_states['policy'].params),
+            
         )
 
         return train_states, tgt_params, metrics
@@ -858,6 +861,8 @@ class DiffusionQL(Algo):
             vf_weight_norm=optax.global_norm(train_states['vf'].params),
             qf1_weight_norm=optax.global_norm(train_states['qf1'].params),
             qf2_weight_norm=optax.global_norm(train_states['qf2'].params),
+            tgt_qf1_weight_norm=optax.global_norm(tgt_params['qf1']),
+            tgt_qf2_weight_norm=optax.global_norm(tgt_params['qf1']),
             policy_weight_norm=optax.global_norm(train_states['policy'].params),
         )
 
@@ -885,6 +890,8 @@ class DiffusionQL(Algo):
                 )
                 self._train_states['qf1'] = self._train_states['qf1'].replace(params=qf1_params)
                 self._train_states['qf2'] = self._train_states['qf2'].replace(params=qf2_params)
+                self._tgt_params['qf1'] = deepcopy(qf1_params)
+                self._tgt_params['qf2'] = deepcopy(qf2_params)
             if self.config.reset_actor:
                 policy_params = self.policy.init(
                     next_rng(),
@@ -898,10 +905,10 @@ class DiffusionQL(Algo):
                 self._train_states['policy_dist'] = self._train_states['policy_dist'].replace(params=policy_dist_params)
             
         q_tgt_update = True
-        if self.config.reset_q:
-            reset_num = int(self._total_steps // self.config.reset_interval)
-            if reset_num > 0 and self._total_steps % self.config.reset_interval < 100000:
-                q_tgt_update = False
+        # if self.config.reset_q:
+        #     reset_num = int(self._total_steps // self.config.reset_interval)
+        #     if reset_num > 0 and self._total_steps % self.config.reset_interval < 100000:
+        #         q_tgt_update = False
         
         self._train_states, self._tgt_params, metrics = self._train_step(
             self._train_states, self._tgt_params, next_rng(), batch, qf_batch,
