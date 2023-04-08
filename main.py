@@ -82,6 +82,12 @@ if __name__ == "__main__":
     parser.add_argument("--reweight_constraint", default=1, type=int)
     parser.add_argument("--clip_constraint", default=0, type=int)  # 0: no clip; 1: hard clip; 2 soft clip
     parser.add_argument("--tag", default='', type=str)
+    # new params
+    parser.add_argument("--qf_layer_norm", default=0, type=int)
+    parser.add_argument("--bc_coef", default=1.0, type=float)
+    parser.add_argument("--reward_scale", default=1.0, type=float)
+    parser.add_argument("--reward_bias", default=0, type=float)
+    
     args = parser.parse_args()
 
     # resample and reweight can not been applied together
@@ -129,8 +135,10 @@ if __name__ == "__main__":
         "policy_noise": args.policy_noise * max_action,
         "noise_clip": args.noise_clip * max_action,
         "policy_freq": args.policy_freq,
+        "qf_layer_norm": args.qf_layer_norm,
         # TD3 + BC
-        "alpha": args.alpha, 
+        "alpha": args.alpha,
+        "bc_coef": args.bc_coef, 
         "reweight_eval": args.reweight_eval, 
         "reweight_improve": args.reweight_improve,
         "reweight_constraint": args.reweight_constraint,
@@ -147,10 +155,11 @@ if __name__ == "__main__":
         base_prob=args.base_prob, resample=args.resample, reweight=args.reweight, n_step=1, discount=args.discount)
     replay_buffer.convert_D4RL(d4rl.qlearning_dataset(env))
     # save return dist
-    np.save(f'./weights/{args.env}_returns.npy', replay_buffer.returns)
+    # np.save(f'./weights/{args.env}_returns.npy', replay_buffer.returns)
     
-    if 'antmaze' in args.env:
-        replay_buffer.reward -= 1.0
+    # if 'antmaze' in args.env:
+    #     replay_buffer.reward -= 1.0
+    replay_buffer.reward = replay_buffer.reward * args.reward_scale + args.reward_bias
     if args.normalize:
         mean,std = replay_buffer.normalize_states() 
     else:

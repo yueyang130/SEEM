@@ -25,40 +25,47 @@ class Actor(nn.Module):
 
 
 class Critic(nn.Module):
-	def __init__(self, state_dim, action_dim):
+	def __init__(self, state_dim, action_dim, layernorm, hidden_dim=256):
 		super(Critic, self).__init__()
+  
+		# # Q1 architecture
+		# self.l1 = nn.Linear(state_dim + action_dim, 256)
+		# self.l2 = nn.Linear(256, 256)
+		# self.l3 = nn.Linear(256, 1)
 
-		# Q1 architecture
-		self.l1 = nn.Linear(state_dim + action_dim, 256)
-		self.l2 = nn.Linear(256, 256)
-		self.l3 = nn.Linear(256, 1)
-
-		# Q2 architecture
-		self.l4 = nn.Linear(state_dim + action_dim, 256)
-		self.l5 = nn.Linear(256, 256)
-		self.l6 = nn.Linear(256, 1)
+		# # Q2 architecture
+		# self.l4 = nn.Linear(state_dim + action_dim, 256)
+		# self.l5 = nn.Linear(256, 256)
+		# self.l6 = nn.Linear(256, 1)
+  
+		self.q1 = nn.Sequential(
+            nn.Linear(state_dim + action_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim) if layernorm else nn.Identity(),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim) if layernorm else nn.Identity(),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1)
+        )
+		self.q2 = nn.Sequential(
+            nn.Linear(state_dim + action_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim) if layernorm else nn.Identity(),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim) if layernorm else nn.Identity(),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1)
+        )
 
 
 	def forward(self, state, action):
 		sa = torch.cat([state, action], 1)
-
-		q1 = F.relu(self.l1(sa))
-		q1 = F.relu(self.l2(q1))
-		q1 = self.l3(q1)
-
-		q2 = F.relu(self.l4(sa))
-		q2 = F.relu(self.l5(q2))
-		q2 = self.l6(q2)
-		return q1, q2
+		return self.q1(sa), self.q2(sa)
 
 
 	def Q1(self, state, action):
 		sa = torch.cat([state, action], 1)
-
-		q1 = F.relu(self.l1(sa))
-		q1 = F.relu(self.l2(q1))
-		q1 = self.l3(q1)
-		return q1
+		return self.q1(sa)
 
 
 class TD3_BC(object):
@@ -77,6 +84,8 @@ class TD3_BC(object):
 		noise_clip=0.5,
 		policy_freq=2,
 		alpha=2.5,
+		bc_coef=1.0,
+		qf_layer_norm=False,
 		**kwargs,
 	):
 
@@ -84,7 +93,7 @@ class TD3_BC(object):
 		self.actor_target = copy.deepcopy(self.actor)
 		self.actor_optimizer = torch.optim.Adam(self.actor.parameters(), lr=3e-4)
 
-		self.critic = Critic(state_dim, action_dim).to(device)
+		self.critic = Critic(state_dim, action_dim, qf_layer_norm).to(device)
 		self.critic_target = copy.deepcopy(self.critic)
 		self.critic_optimizer = torch.optim.Adam(self.critic.parameters(), lr=3e-4)
 
@@ -95,6 +104,7 @@ class TD3_BC(object):
 		self.noise_clip = noise_clip
 		self.policy_freq = policy_freq
 		self.alpha = alpha
+		self.bc_coef = bc_coef
 
 		self.reweight_eval = reweight_eval
 		self.reweight_improve = reweight_improve
@@ -173,7 +183,7 @@ class TD3_BC(object):
 					c_weight = weight
 				constraint_loss *= c_weight
 			constraint_loss = constraint_loss.mean()
-			actor_loss = -lmbda * actor_loss + constraint_loss
+			actor_loss = -lmbda * actor_loss + constraint_loss * self.bc_coef
 			
 			# Optimize the actor 
 			self.actor_optimizer.zero_grad()

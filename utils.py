@@ -1,5 +1,4 @@
 import numpy as np
-from symbol import compound_stmt
 import torch
 
 
