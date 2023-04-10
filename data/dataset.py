@@ -30,10 +30,13 @@ from gym import spaces
 class Dataset(object):
   """Dataset."""
 
-  def __init__(self, data: dict) -> None:
+  def __init__(self, data: dict, state_simga, action_sigma, clip_action) -> None:
     self._data = data
     self._keys = list(data.keys())
     self._sampler = None
+    self.state_sigma = state_simga
+    self.action_sigma = action_sigma
+    self.clip_action = clip_action
 
   def size(self):
     return len(self._data[self._keys[0]])
@@ -60,7 +63,18 @@ class Dataset(object):
       indices = np.random.randint(self.size(), size=self._sampler._batch_size)
     else:
       indices = self._sampler.sample()
-    return self.retrieve(indices)
+    data = self.retrieve(indices)
+    
+    # TODO: add an option
+    # data aug
+    if self.state_sigma > 0:
+      shape = data['observations'].shape
+      data['observations'] += np.random.randn(*shape,) * self.state_sigma
+      data['next_observations'] += np.random.randn(*shape,) * self.state_sigma
+    if self.action_sigma > 0:
+      data['actions'] += np.random.randn(*data['actions'].shape,) * self.action_sigma
+      data["actions"] = np.clip(data["actions"], -self.clip_action, self.clip_action)
+    return data
 
 
 class RLUPDataset(object):

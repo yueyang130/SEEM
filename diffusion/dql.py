@@ -139,7 +139,7 @@ class DiffusionQL(Algo):
 
         self._train_states['policy'] = TrainState.create(
             params=policy_params,
-            tx=get_optimizer(self.config.lr_decay, weight_decay=0.0),
+            tx=get_optimizer(self.config.lr_decay),
             apply_fn=None
         )
 
@@ -147,7 +147,7 @@ class DiffusionQL(Algo):
             next_rng(), jnp.zeros((10, self.action_dim))
         )
         self._train_states['policy_dist'] = TrainState.create(
-            params=policy_dist_params, tx=get_optimizer(weight_decay=0.0), apply_fn=None
+            params=policy_dist_params, tx=get_optimizer(), apply_fn=None
         )
 
         qf1_params = self.qf.init(
@@ -167,13 +167,13 @@ class DiffusionQL(Algo):
         )
 
         self._train_states['qf1'] = TrainState.create(
-            params=qf1_params, tx=get_optimizer(), apply_fn=None
+            params=qf1_params, tx=get_optimizer(weight_decay=0.0), apply_fn=None
         )
         self._train_states['qf2'] = TrainState.create(
-            params=qf2_params, tx=get_optimizer(), apply_fn=None
+            params=qf2_params, tx=get_optimizer(weight_decay=0.0), apply_fn=None
         )
         self._train_states['vf'] = TrainState.create(
-            params=vf_params, tx=get_optimizer(), apply_fn=None,
+            params=vf_params, tx=get_optimizer(weight_decay=0.0), apply_fn=None,
         )
         self._tgt_params = deepcopy(
             {

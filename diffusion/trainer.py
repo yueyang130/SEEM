@@ -69,7 +69,9 @@ FLAGS_DEF = define_flags_with_default(
   oper=False,
   two_sampler=False,
   priority='return',
-  eas_temp=1.0,
+  eas_temp=1.0, # useless
+  state_sigma=0.0, 
+  action_sigma=0.0, 
 )
 
 
@@ -85,6 +87,7 @@ class SamplerPolicy(object):
     self.num_samples = 50
     self.act_method = act_method
     self.dist2value = dist2value
+    self.temp = 1.0
 
   def update_params(self, params, tgt_params):
     self.params = params
@@ -255,41 +258,42 @@ class DiffusionTrainer(MFTrainer):
         if epoch == 0 or (epoch + 1) % self._cfgs.eval_period == 0:
 
           for method in act_methods:
-            for eas_temp in [0.01, 0.1, 1.0, 10.0, 100.0]:
-              # TODO: merge these two
-              self._sampler_policy.act_method = \
-                method or self._cfgs.sample_method + "ensemble"
-              if self._cfgs.sample_method == 'ddim':
-                self._sampler_policy.act_method = "ensemble"
-              trajs = self._eval_sampler.sample(
-                self._sampler_policy.update_params(self._agent.train_params, self._agent._tgt_params).update_temp(eas_temp),
-                self._cfgs.eval_n_trajs,
-                deterministic=True,
-                obs_statistics=(self._obs_mean, self._obs_std, self._obs_clip),
-              )
+            # for eas_temp in [0.01, 0.1, 1.0, 10.0, 100.0]:
+            # TODO: merge these two
+            self._sampler_policy.act_method = \
+              method or self._cfgs.sample_method + "ensemble"
+            if self._cfgs.sample_method == 'ddim':
+              self._sampler_policy.act_method = "ensemble"
+            trajs = self._eval_sampler.sample(
+              # self._sampler_policy.update_params(self._agent.train_params, self._agent._tgt_params).update_temp(eas_temp),
+              self._sampler_policy.update_params(self._agent.train_params, self._agent._tgt_params),
+              self._cfgs.eval_n_trajs,
+              deterministic=True,
+              obs_statistics=(self._obs_mean, self._obs_std, self._obs_clip),
+            )
 
-              post = "" if len(act_methods) == 1 else "_" + method
-              post += f"eas_temp={eas_temp}"
-              metrics["average_return" +
-                      post] = np.mean([np.sum(t["rewards"]) for t in trajs])
-              metrics["average_traj_length" +
-                      post] = np.mean([len(t["rewards"]) for t in trajs])
-              metrics["average_normalizd_return" + post] = cur_return = np.mean(
-                [
-                  self._eval_sampler.env.get_normalized_score(
-                    np.sum(t["rewards"])
-                  ) for t in trajs
-                ]
-              )
-              recent_returns[method].append(cur_return)
-              metrics["average_10_normalized_return" +
-                      post] = np.mean(recent_returns[method])
-              metrics["best_normalized_return" +
-                      post] = best_returns[method] = max(
-                        best_returns[method], cur_return
-                      )
-              metrics["done" +
-                      post] = np.mean([np.sum(t["dones"]) for t in trajs])
+            post = "" if len(act_methods) == 1 else "_" + method
+            # post += f"eas_temp={eas_temp}"
+            metrics["average_return" +
+                    post] = np.mean([np.sum(t["rewards"]) for t in trajs])
+            metrics["average_traj_length" +
+                    post] = np.mean([len(t["rewards"]) for t in trajs])
+            metrics["average_normalizd_return" + post] = cur_return = np.mean(
+              [
+                self._eval_sampler.env.get_normalized_score(
+                  np.sum(t["rewards"])
+                ) for t in trajs
+              ]
+            )
+            recent_returns[method].append(cur_return)
+            metrics["average_10_normalized_return" +
+                    post] = np.mean(recent_returns[method])
+            metrics["best_normalized_return" +
+                    post] = best_returns[method] = max(
+                      best_returns[method], cur_return
+                    )
+            metrics["done" +
+                    post] = np.mean([np.sum(t["dones"]) for t in trajs])
 
           if self._cfgs.save_model:
             save_data = {

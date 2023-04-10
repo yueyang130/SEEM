@@ -86,17 +86,18 @@ ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0 QF_LAYER_NORM=Fals
 
 eval "$(GPU=1 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_ANNEAL=False QF_LAYER_NORM=True bash scripts/launch_job.sh)"
 
-PROC=1 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 LB_RATE=10 bash scripts/launch_job_slurm.sh
+ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 LB_RATE=10 bash scripts/launch_job_slurm.sh
+
 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job_slurm.sh
+ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.1 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job_slurm.sh
 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=1.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job_slurm.sh
+
 eval "$(GPU=0 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job.sh)"
 eval "$(GPU=1 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=0.1 bash scripts/launch_job.sh)"
 eval "$(GPU=1 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01  bash scripts/launch_job.sh)"
 eval "$(GPU=0 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=1.0  bash scripts/launch_job.sh)"
 eval "$(GPU=0 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=1.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job.sh)"
 
-ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=1.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job_slurm.sh
-ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.1 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job_slurm.sh
 
 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=1.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 RESET_Q=True RESET_INTERVAL=1000000 RESET_ACTOR=False MAX_TGT_Q=True bash scripts/launch_job_slurm.sh
 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=1.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 RESET_Q=True RESET_INTERVAL=1000000 RESET_ACTOR=True MAX_TGT_Q=True bash scripts/launch_job_slurm.sh
@@ -106,7 +107,6 @@ ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=T
 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 RESET_Q=True RESET_INTERVAL=500000 RESET_ACTOR=True MAX_TGT_Q=True bash scripts/launch_job_slurm.sh
 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 RESET_Q=True RESET_INTERVAL=1000000 RESET_ACTOR=False MAX_TGT_Q=True bash scripts/launch_job_slurm.sh
 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 RESET_Q=True RESET_INTERVAL=1000000 RESET_ACTOR=True MAX_TGT_Q=True bash scripts/launch_job_slurm.sh
-
 
 ALGO=quantile_td3 NOTES=stop_q_tgt TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=1.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 RESET_Q=True RESET_INTERVAL=1000000 RESET_ACTOR=True MAX_TGT_Q=True bash scripts/launch_job_slurm.sh
 ALGO=quantile_td3 NOTES=stop_q_tgt TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 RESET_Q=True RESET_INTERVAL=1000000 RESET_ACTOR=True MAX_TGT_Q=True bash scripts/launch_job_slurm.sh
@@ -118,6 +118,8 @@ ALGO=quantile_td3 NOTES=stop_q_tgt TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.0
 ALGO=quantile_td3 NOTES=stop_q_tgt TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 RESET_Q=True RESET_INTERVAL=500000 RESET_ACTOR=False MAX_TGT_Q=True bash scripts/launch_job_slurm.sh
 ALGO=quantile_td3 NOTES=stop_q_tgt TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 RESET_Q=True RESET_INTERVAL=250000 RESET_ACTOR=False MAX_TGT_Q=True bash scripts/launch_job_slurm.sh
 
+
+
 ALGO=quantile_td3 NOTES=L2_norm TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 WEIGHT_DECAY=0.1 bash scripts/launch_job_slurm.sh
 ALGO=quantile_td3 NOTES=L2_norm TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 WEIGHT_DECAY=0.05 bash scripts/launch_job_slurm.sh
 ALGO=quantile_td3 NOTES=L2_norm TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 WEIGHT_DECAY=0.01 bash scripts/launch_job_slurm.sh
@@ -127,5 +129,33 @@ ALGO=quantile_td3 NOTES=L2_norm TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 Q
 ALGO=quantile_td3 NOTES=L2_norm TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 WEIGHT_DECAY=0.000001 bash scripts/launch_job_slurm.sh
 ALGO=quantile_td3 NOTES=L2_norm TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 WEIGHT_DECAY=0 bash scripts/launch_job_slurm.sh
 
+ALGO=quantile_td3 NOTES=L2_norm TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 WEIGHT_DECAY=0 bash scripts/launch_job_slurm.sh
+ALGO=quantile_td3 NOTES=L2_norm TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=1.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 WEIGHT_DECAY=0 bash scripts/launch_job_slurm.sh
+ALGO=quantile_td3 NOTES=L2_norm TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=1.0 NORM_REW=True REW_SCALE=10 WEIGHT_DECAY=0 bash scripts/launch_job_slurm.sh
+
 
 ALGO=quantile_td3 NOTES=eas_sweep TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job_slurm.sh
+
+ALGO=quantile_td3 NOTES=data_aug_v2 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 STATE_SIGMA=0 ACTION_SIGMA=0.0001 bash scripts/launch_job_slurm.sh
+ALGO=quantile_td3 NOTES=data_aug_v2 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 STATE_SIGMA=0 ACTION_SIGMA=0.0003 bash scripts/launch_job_slurm.sh
+ALGO=quantile_td3 NOTES=data_aug_v2 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 STATE_SIGMA=0 ACTION_SIGMA=0.001 bash scripts/launch_job_slurm.sh
+ALGO=quantile_td3 NOTES=data_aug_v2 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 STATE_SIGMA=0 ACTION_SIGMA=0.003 bash scripts/launch_job_slurm.sh
+ALGO=quantile_td3 NOTES=data_aug_v2 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 STATE_SIGMA=0 ACTION_SIGMA=0.01 bash scripts/launch_job_slurm.sh
+
+ALGO=quantile_td3 NOTES=data_aug_v2 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 STATE_SIGMA=0.0001 ACTION_SIGMA=0 bash scripts/launch_job_slurm.sh
+ALGO=quantile_td3 NOTES=data_aug_v2 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 STATE_SIGMA=0.0003 ACTION_SIGMA=0 bash scripts/launch_job_slurm.sh
+ALGO=quantile_td3 NOTES=data_aug_v2 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 STATE_SIGMA=0.001 ACTION_SIGMA=0 bash scripts/launch_job_slurm.sh
+ALGO=quantile_td3 NOTES=data_aug_v2 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 STATE_SIGMA=0.003 ACTION_SIGMA=0 bash scripts/launch_job_slurm.sh
+ALGO=quantile_td3 NOTES=data_aug_v2 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.01 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 STATE_SIGMA=0.01 ACTION_SIGMA=0 bash scripts/launch_job_slurm.sh
+
+
+ALGO=quantile_td3 NOTES=actor_L2_norm TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=1.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 WEIGHT_DECAY=0.01 bash scripts/launch_job_slurm.sh
+ALGO=quantile_td3 NOTES=actor_L2_norm TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=1.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 WEIGHT_DECAY=0.001 bash scripts/launch_job_slurm.sh
+ALGO=quantile_td3 NOTES=actor_L2_norm TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=1.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 WEIGHT_DECAY=0.0001 bash scripts/launch_job_slurm.sh
+ALGO=quantile_td3 NOTES=actor_L2_norm TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=1.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 WEIGHT_DECAY=0.00001 bash scripts/launch_job_slurm.sh
+
+
+ALGO=diff-TD3 NOTES=pos_rew_TD3 REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 DIFF_COEF=1.0 GUIDE_COEF=0 GUIDE_WARMUP=False QF_LAYER_NORM=True bash scripts/launch_job_slurm.sh
+ALGO=diff-TD3 NOTES=pos_rew_TD3 REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 DIFF_COEF=0.5 GUIDE_COEF=0 GUIDE_WARMUP=False QF_LAYER_NORM=True bash scripts/launch_job_slurm.sh
+ALGO=diff-TD3 NOTES=pos_rew_TD3 REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 DIFF_COEF=0.1 GUIDE_COEF=0 GUIDE_WARMUP=False QF_LAYER_NORM=True bash scripts/launch_job_slurm.sh
+ALGO=diff-TD3 NOTES=pos_rew_TD3 REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 DIFF_COEF=0 GUIDE_COEF=0 GUIDE_WARMUP=False QF_LAYER_NORM=True bash scripts/launch_job_slurm.sh

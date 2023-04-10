@@ -249,7 +249,7 @@ class MFTrainer(Trainer):
         # dataset["rewards"] = (dataset["rewards"] - 0.5) * 2
 
     # set sampler
-    dataset = Dataset(dataset)
+    dataset = Dataset(dataset, self._cfgs.state_sigma, self._cfgs.action_sigma, self._cfgs.clip_action)
 
     if self._cfgs.oper:
       if self._cfgs.priority=='return':
