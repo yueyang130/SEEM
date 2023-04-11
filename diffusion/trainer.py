@@ -58,6 +58,7 @@ FLAGS_DEF = define_flags_with_default(
   eval_n_trajs=10,
   logging=WandBLogger.get_default_config(),
   qf_layer_norm=False,
+  only_penultimate_norm=False,
   policy_layer_norm=False,
   activation="mish",
   obs_norm=False,
@@ -359,6 +360,7 @@ class DiffusionTrainer(MFTrainer):
       self._action_dim,
       to_arch(self._cfgs.qf_arch),
       use_layer_norm=self._cfgs.qf_layer_norm,
+      only_penultimate_norm=self._cfgs.only_penultimate_norm,
       act=self._act_fn,
       orthogonal_init=self._cfgs.orthogonal_init,
       out_dim=qf_out_dim

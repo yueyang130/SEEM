@@ -196,6 +196,7 @@ class Critic(nn.Module):
   arch: Tuple = (256, 256, 256)
   act: callable = mish
   use_layer_norm: bool = False
+  only_penultimate_norm: bool = False
   orthogonal_init: bool = False
   out_dim: int = 1
 
@@ -204,7 +205,7 @@ class Critic(nn.Module):
   def __call__(self, observations, actions):
     x = jnp.concatenate([observations, actions], axis=-1)
 
-    for feat in self.arch:
+    for i, feat in enumerate(self.arch):
       if self.orthogonal_init:
         x = nn.Dense(
           feat,
@@ -214,7 +215,8 @@ class Critic(nn.Module):
       else:
         x = nn.Dense(feat)(x)
       if self.use_layer_norm:
-        x = nn.LayerNorm()(x)
+        if not self.only_penultimate_norm or i == len(self.arch) - 1:
+          x = nn.LayerNorm()(x)
       x = self.act(x)
 
     if self.orthogonal_init:
