@@ -17,7 +17,13 @@ if [ ! -d "$file_dir" ]; then
 fi
 
 # 运行 launch_job.sh，并将每两条命令放到一个文件中
-bash scripts/launch_job.sh | while read -r command; do
+if [  "$FINETUNE" == "True" ]; then
+    file=scripts/launch_job_finetune.sh
+else
+    file=scripts/launch_job.sh
+fi
+
+bash $file  | while read -r command; do
     echo "$command" >> "${file_dir}/${file_prefix}_${file_num}.sh"
     ((command_num++))
     if [ $((command_num%$PROC)) -eq 0 ]; then

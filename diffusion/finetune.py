@@ -32,8 +32,7 @@ from viskit.logging import logger, setup_logger
 from diffusion.hps import hyperparameters
 
 FLAGS_DEF = define_flags_with_default(
-  algo="DiffQL",
-  # algo="DiffusionQL",
+  algo="diff-td3-finetune",
   type="model-free",
   env="walker2d-medium-replay-v2",
   dataset='d4rl',
@@ -53,19 +52,19 @@ FLAGS_DEF = define_flags_with_default(
   policy_log_std_multiplier=1.0,
   policy_log_std_offset=-1.0,
   algo_cfg=DiffusionQL.get_default_config(),
-  n_epochs=1000,
+  online_epochs=1000,
   n_train_step_per_epoch=1000,
   eval_period=10,
   eval_n_trajs=10,
   logging=WandBLogger.get_default_config(),
   qf_layer_norm=False,
-  # only_penultimate_norm=False,
-  layer_norm_index=[0,1,2],
+  only_penultimate_norm=False,
   policy_layer_norm=False,
   activation="mish",
   obs_norm=False,
   act_method='',
   sample_method='ddpm',
+  interact_method='',
   policy_temp=1.0,
   norm_reward=False,
   # hyperparameters for OPER https://github.com/sail-sg/OPER
@@ -75,6 +74,8 @@ FLAGS_DEF = define_flags_with_default(
   eas_temp=1.0, # useless
   state_sigma=0.0, 
   action_sigma=0.0, 
+  # online finetune
+  constraint=1, # 1: keep; 2: anneal; 3: remove
 )
 
 
@@ -144,7 +145,7 @@ class SamplerPolicy(object):
 
   @partial(jax.jit, static_argnames=("self", "deterministic", "num_samples"))
   def dpmensemble_act(
-    self, params, tgt_params, rng, observations, deterministic, num_samples
+    self, params, rng, observations, deterministic, num_samples
   ):
     rng, key = jax.random.split(rng)
     actions = self.policy.apply(
@@ -198,7 +199,17 @@ class SamplerPolicy(object):
   def __call__(self, observations, deterministic=False):
     observations = (observations - self.mean) / self.std
     actions = getattr(self, f"{self.act_method}_act")(
-      self.params, self.tgt_params, next_rng(), observations, deterministic, self.num_samples
+      self.params, next_rng(), observations, deterministic, self.num_samples
+    )
+    if isinstance(actions, tuple):
+      actions = actions[0]
+    assert jnp.all(jnp.isfinite(actions))
+    return jax.device_get(actions)
+  
+  def interact(self, observations, method):
+    observations = (observations - self.mean) / self.std
+    actions = getattr(self, f"{method}_act")(
+      self.params, next_rng(), observations, deterministic=False, num_samples=self.num_samples
     )
     if isinstance(actions, tuple):
       actions = actions[0]
@@ -215,12 +226,12 @@ class DiffusionTrainer(MFTrainer):
 
     # per-game hyperparameters
     self._cfgs.algo_cfg.max_grad_norm = hyperparameters[self._cfgs.env]['gn']
-    if hyperparameters[self._cfgs.env]['diff_coef']:
-      self._cfgs.algo_cfg.diff_coef = hyperparameters[self._cfgs.env]['diff_coef']
+    self._cfgs.algo_cfg.diff_coef = hyperparameters[self._cfgs.env]['diff_coef']
     self._cfgs.oper = hyperparameters[self._cfgs.env]['oper']
     
+    # lr decay not used actually; use train_steps in annealing
     self._cfgs.algo_cfg.lr_decay_steps = \
-      self._cfgs.n_epochs * self._cfgs.n_train_step_per_epoch
+      self._cfgs.online_epochs * self._cfgs.n_train_step_per_epoch
     self._cfgs.algo_cfg.train_steps = self._cfgs.algo_cfg.lr_decay_steps
 
     if self._cfgs.activation == 'mish':
@@ -250,23 +261,67 @@ class DiffusionTrainer(MFTrainer):
     viskit_metrics = {}
     recent_returns = {method: deque(maxlen=10) for method in act_methods}
     best_returns = {method: -float('inf') for method in act_methods}
-    for epoch in range(self._cfgs.n_epochs):
-      metrics = {"epoch": epoch}
+    
+    # evaluate the offline-trained agent
+    metrics = {}
+    self._sampler_policy.act_method = \
+      self._cfgs.act_method or self._cfgs.sample_method + "ensemble"
+    trajs = self._eval_sampler.sample(
+      self._sampler_policy.update_params(self._agent.train_params, self._agent._tgt_params),
+      self._cfgs.eval_n_trajs,
+      deterministic=True,
+      obs_statistics=(self._obs_mean, self._obs_std, self._obs_clip),
+    )
+    metrics["offline/average_return"] = np.mean([np.sum(t["rewards"]) for t in trajs])
+    metrics["offline/average_normalizd_return"] = cur_return = np.mean(
+      [
+        self._eval_sampler.env.get_normalized_score(
+          np.sum(t["rewards"])
+        ) for t in trajs
+      ]
+    )
+    self._wandb_logger.log(metrics)
 
+
+    observation, done = self._env.reset(), False
+    for epoch in range(self._cfgs.online_epochs):
+      metrics = {"epoch": epoch}
       with Timer() as train_timer:
         for _ in tqdm.tqdm(range(self._cfgs.n_train_step_per_epoch)):
+          
+          # Interaction with stochatic policy; evaluation with deterministic policy.
+          agent = self._sampler_policy.update_params(self._agent.train_params, self._agent._tgt_params)
+          action = agent.interact(observation.reshape(1, -1), method=self._cfgs.interact_method)
+          action = np.clip(action, -1, 1).reshape(-1)
+          next_observation, reward, done, info = self._env.step(action)
+          reward = self._reward_fn(reward)
+          
+          # 'done' returned by env.step means 'terminal' or 'TimeLimit'.
+          # We should set 'done' which only means 'terminal'.
+          if not done or 'TimeLimit.truncated' in info:
+              mask = 1.0
+          else:
+              mask = 0.0
+
+          self._dataset.add_sample(observation, action, reward, 
+                              next_observation, np.array(1-mask, dtype=np.float32))
+          observation = next_observation
+
+          if done:
+              observation, done = self._env.reset(), False
+    
+          # training
           batch = batch_to_jax(self._dataset.sample())
           if self._cfgs.two_sampler:
-            qf_batch = batch_to_jax(self._dataset.sample(uniform=True))
+            qf_batch = batch_to_jax(self._dataset.sample())
           else:
             qf_batch = batch
           metrics.update(prefix_metrics(self._agent.train(batch, qf_batch), "agent"))
 
       with Timer() as eval_timer:
-        if epoch == 0 or (epoch + 1) % self._cfgs.eval_period == 0:
+        if (epoch + 1) % self._cfgs.eval_period == 0:
 
           for method in act_methods:
-            # for eas_temp in [0.01, 0.1, 1.0, 10.0, 100.0]:
             # TODO: merge these two
             self._sampler_policy.act_method = \
               method or self._cfgs.sample_method + "ensemble"
@@ -280,7 +335,6 @@ class DiffusionTrainer(MFTrainer):
             )
 
             post = "" if len(act_methods) == 1 else "_" + method
-            # post += f"eas_temp={eas_temp}"
             metrics["average_return" +
                     post] = np.mean([np.sum(t["rewards"]) for t in trajs])
             metrics["average_traj_length" +
@@ -302,14 +356,6 @@ class DiffusionTrainer(MFTrainer):
             metrics["done" +
                     post] = np.mean([np.sum(t["dones"]) for t in trajs])
 
-          if self._cfgs.save_model:
-            save_data = {
-              "agent": self._agent,
-              "variant": self._variant,
-              "epoch": epoch
-            }
-            self._wandb_logger.save_pickle(save_data, f"model_{epoch}.pkl")
-
       metrics["train_time"] = train_timer()
       metrics["eval_time"] = eval_timer()
       metrics["epoch_time"] = train_timer() + eval_timer()
@@ -317,18 +363,8 @@ class DiffusionTrainer(MFTrainer):
       viskit_metrics.update(metrics)
       logger.record_dict(viskit_metrics)
       logger.dump_tabular(with_prefix=False, with_timestamp=False)
+    
 
-    # save model
-    if self._cfgs.save_model:
-      save_data = {
-        "agent": self._agent,
-        # "variant": self._variant,
-        "epoch": epoch
-      }
-      with open(os.path.join('checkpoint', f"{self._cfgs.env}_final.pkl"), "wb") as fout:
-        pickle.dump(save_data, fout)
-    
-    
   def _setup(self):
       
     set_random_seed(self._cfgs.seed)
@@ -336,79 +372,32 @@ class DiffusionTrainer(MFTrainer):
     if self._cfgs.lb_rate != 1:
       self._cfgs.batch_size *= self._cfgs.lb_rate
       self._cfgs.algo_cfg.lr *= self._cfgs.lb_rate ** 0.5
-          
+    
     # setup logger
     self._wandb_logger = self._setup_logger()
 
     # setup dataset and eval_sample
-    self._dataset, self._eval_sampler = self._setup_dataset()
+    self._env, self._dataset, self._eval_sampler, self._reward_fn = self._setup_replay_buffer()
 
-    # setup policy
-    self._policy = self._setup_policy()
-    self._policy_dist = GaussianPolicy(
-      self._action_dim, temperature=self._cfgs.policy_temp
-    )
-
-    # setup Q-function
-    self._qf = self._setup_qf()
-    self._vf = self._setup_vf()
-
-    # setup agent
-    self._agent = self._algo(self._cfgs.algo_cfg, self._policy, self._qf, self._vf, self._policy_dist)
+    # setup agent by loading offline model
+    with open(os.path.join('checkpoint', f"{self._cfgs.env}_final.pkl"), "rb") as fout:
+      self._agent = pickle.load(fout)['agent']
       
+    # adjust policy constraint in online training
+    # TODO: check
+    if self._cfgs.constraint == 1: # unchange
+      pass 
+    elif self._cfgs.constraint == 2: # anneal
+      self._agent.config.constraint_steps = 500000
+      self._agent._total_steps = 0
+      self._agent.config.diff_annealing = True
+    elif self._cfgs.constraint == 3: # remove
+      self._agent.config.diff_coef = 0
+    
       
     # setup sampler policy
     dist2value_fn = self._agent.dist_agent.dist2value if self._cfgs.algo_cfg.use_dist_rl else lambda x: x
     self._sampler_policy = SamplerPolicy(self._agent.policy, qf=self._agent.qf, dist2value=dist2value_fn)
-
-  def _setup_qf(self):
-    qf_out_dim = self._cfgs.algo_cfg.num_atoms - 1 if self._cfgs.algo_cfg.use_dist_rl else 1
-    qf = Critic(
-      self._observation_dim,
-      self._action_dim,
-      to_arch(self._cfgs.qf_arch),
-      use_layer_norm=self._cfgs.qf_layer_norm,
-      # only_penultimate_norm=self._cfgs.only_penultimate_norm,
-      layer_norm_index=tuple(int(i) for i in self._cfgs.layer_norm_index),
-      act=self._act_fn,
-      orthogonal_init=self._cfgs.orthogonal_init,
-      out_dim=qf_out_dim
-    )
-    return qf
-  
-  def _setup_vf(self):
-    vf = Value(
-      self._observation_dim,
-      to_arch(self._cfgs.qf_arch),
-      use_layer_norm=self._cfgs.qf_layer_norm,
-      act=self._act_fn,
-      orthogonal_init=self._cfgs.orthogonal_init,
-    )
-    return vf
-
-  def _setup_policy(self):
-    gd = GaussianDiffusion(
-      num_timesteps=self._cfgs.algo_cfg.num_timesteps,
-      schedule_name=self._cfgs.algo_cfg.schedule_name,
-      model_mean_type=ModelMeanType.EPSILON,
-      model_var_type=ModelVarType.FIXED_SMALL,
-      loss_type=LossType.MSE,
-      min_value=-self._max_action,
-      max_value=self._max_action,
-    )
-    policy = DiffusionPolicy(
-      diffusion=gd,
-      observation_dim=self._observation_dim,
-      action_dim=self._action_dim,
-      arch=to_arch(self._cfgs.policy_arch),
-      time_embed_size=self._cfgs.algo_cfg.time_embed_size,
-      use_layer_norm=self._cfgs.policy_layer_norm,
-      sample_method=self._cfgs.sample_method,
-      dpm_steps=self._cfgs.algo_cfg.dpm_steps,
-      dpm_t_end=self._cfgs.algo_cfg.dpm_t_end,
-    )
-
-    return policy
 
   def _setup_logger(self):
     env_name_high = ENVNAME_MAP[self._env]

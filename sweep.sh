@@ -160,8 +160,43 @@ ALGO=diff-TD3 NOTES=pos_rew_TD3 REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 DIFF_COEF=
 ALGO=diff-TD3 NOTES=pos_rew_TD3 REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 DIFF_COEF=0.1 GUIDE_COEF=0 GUIDE_WARMUP=False QF_LAYER_NORM=True bash scripts/launch_job_slurm.sh
 ALGO=diff-TD3 NOTES=pos_rew_TD3 REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 DIFF_COEF=0 GUIDE_COEF=0 GUIDE_WARMUP=False QF_LAYER_NORM=True bash scripts/launch_job_slurm.sh
 
-ALGO=diff-TD3 NOTES=pos_rew_TD3 REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 DIFF_COEF=0.1 GUIDE_COEF=0 GUIDE_WARMUP=False QF_LAYER_NORM=True bash scripts/launch_job_slurm.sh
-
 
 eval "$(GPU=0 ALGO=diff-TD3 NOTES=pos_rew_TD3 REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 DIFF_COEF=0.1 GUIDE_COEF=0 GUIDE_WARMUP=False QF_LAYER_NORM=True ONLY_PENU_NORM=True bash scripts/launch_job.sh)"
-eval "$(GPU=1 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0.1 QF_LAYER_NORM=True ONLY_PENU_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job.sh)"
+eval "$(GPU=1 ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_CO
+EF=0.1 QF_LAYER_NORM=True ONLY_PENU_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job.sh)"
+
+ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=0 QF_LAYER_NORM=False NORM_REW=True REW_SCALE=10 bash scripts/launch_job_slurm.sh
+ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=4.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job_slurm.sh
+ALGO=quantile_td3 TASK=gym ALPHA=2.0 GUIDE_COEF=0 DIFF_COEF=8.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job_slurm.sh
+
+ALGO=diff-TD3 NOTES=weight_decay REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 DIFF_COEF=0.5 GUIDE_COEF=0 QF_LAYER_NORM=False WEIGHT_DECAY=0.01 bash scripts/launch_job_slurm.sh
+ALGO=diff-TD3 NOTES=weight_decay REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 DIFF_COEF=0.5 GUIDE_COEF=0 QF_LAYER_NORM=False WEIGHT_DECAY=0.001 bash scripts/launch_job_slurm.sh
+ALGO=diff-TD3 NOTES=weight_decay REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 DIFF_COEF=0.5 GUIDE_COEF=0 QF_LAYER_NORM=False WEIGHT_DECAY=0.0001 bash scripts/launch_job_slurm.sh
+ALGO=diff-TD3 NOTES=weight_decay REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 DIFF_COEF=0.5 GUIDE_COEF=0 QF_LAYER_NORM=False WEIGHT_DECAY=0.00001 bash scripts/launch_job_slurm.sh
+ALGO=diff-TD3 NOTES=weight_decay REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 DIFF_COEF=0.5 GUIDE_COEF=0 QF_LAYER_NORM=False WEIGHT_DECAY=0 bash scripts/launch_job_slurm.sh
+
+ALGO=diff-TD3 NOTES=OPER_pbase0  REW_SCALE=10.0 TASK=antmaze OPER=True TWO_SAMPLER=True ALPHA=2.0 DIFF_COEF=0.5 GUIDE_COEF=0 QF_LAYER_NORM=True bash scripts/launch_job_slurm.sh
+ALGO=diff-TD3 NOTES=pos_rew_TD3 REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 DIFF_COEF=0.5 GUIDE_COEF=0 QF_LAYER_NORM=True bash scripts/launch_job_slurm.sh
+
+ALGO=quantile_td3 NOTES=per-game TASK=gym ALPHA=2.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job_slurm.sh
+
+ALGO=quantile_td3 TASK=kitchen NOTES=reward_norm_v2 ALPHA=0.02 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job_slurm.sh # TD3
+ALGO=quantile_td3 TASK=kitchen NOTES=reward_norm_v2 ALPHA=0.02 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=1 bash scripts/launch_job_slurm.sh # TD3
+ALGO=quantile_td3 TASK=adroit NOTES=reward_norm_v2 ALPHA=0.2 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job_slurm.sh # TD3
+# ALGO=quantile_td3 TASK=kitchen ALPHA=2.0 DIFF_COEF=10 bash scripts/launch_job.sh # TD3
+# ALGO=quantile_td3 TASK=adroit ALPHA=2.0 DIFF_COEF=10 bash scripts/launch_job.sh # TD3
+
+
+# FINETUNE=True INTERACT_METHOD=dpm CONSTRAINT=1 TASK=gym ALPHA=2.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job_slurm.sh
+# FINETUNE=True INTERACT_METHOD=dpm CONSTRAINT=3 TASK=gym ALPHA=2.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job_slurm.sh
+# FINETUNE=True INTERACT_METHOD=dpm CONSTRAINT=2 TASK=gym ALPHA=2.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job_slurm.sh
+
+FINETUNE=True INTERACT_METHOD=dpmensemble CONSTRAINT=1 TASK=gym ALPHA=2.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job_slurm.sh
+FINETUNE=True INTERACT_METHOD=dpmensemble CONSTRAINT=3 TASK=gym ALPHA=2.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job_slurm.sh
+FINETUNE=True INTERACT_METHOD=dpmensemble CONSTRAINT=2 TASK=gym ALPHA=2.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job_slurm.sh
+
+ALGO=diff-TD3 NOTES=ablate_LN REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 QF_LAYER_NORM=True LAYER_NORM_INDEX=0 bash scripts/launch_job_slurm.sh
+ALGO=diff-TD3 NOTES=ablate_LN REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 QF_LAYER_NORM=True LAYER_NORM_INDEX=0,1 bash scripts/launch_job_slurm.sh
+ALGO=diff-TD3 NOTES=ablate_LN REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 QF_LAYER_NORM=True LAYER_NORM_INDEX=0,1,2 bash scripts/launch_job_slurm.sh
+ALGO=diff-TD3 NOTES=ablate_LN REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 QF_LAYER_NORM=True LAYER_NORM_INDEX=2 bash scripts/launch_job_slurm.sh
+ALGO=diff-TD3 NOTES=ablate_LN REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 QF_LAYER_NORM=True LAYER_NORM_INDEX=1,2 bash scripts/launch_job_slurm.sh

@@ -69,7 +69,7 @@ class WandBLogger(object):
     config.online = False
     config.prefix = ""
     config.project = "OfflineRL"
-    config.output_dir = "/tmp/MISA"
+    config.output_dir = "./checkpoint"
     config.random_delay = 0.0
     config.experiment_id = config_dict.placeholder(str)
     config.anonymous = config_dict.placeholder(str)
@@ -155,6 +155,8 @@ def define_flags_with_default(**kwargs):
       absl.flags.DEFINE_float(key, val, "automatically defined flag")
     elif isinstance(val, str):
       absl.flags.DEFINE_string(key, val, "automatically defined flag")
+    elif isinstance(val, list):
+      absl.flags.DEFINE_list(key, val, "automatically defined flag")
     else:
       raise ValueError("Incorrect value type")
   return kwargs

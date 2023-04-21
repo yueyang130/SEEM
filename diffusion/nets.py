@@ -1,5 +1,5 @@
 """Networks for diffusion policy."""
-from typing import Tuple
+from typing import Tuple, List
 from functools import partial
 
 import jax
@@ -196,7 +196,8 @@ class Critic(nn.Module):
   arch: Tuple = (256, 256, 256)
   act: callable = mish
   use_layer_norm: bool = False
-  only_penultimate_norm: bool = False
+  # only_penultimate_norm: bool = False
+  layer_norm_index: Tuple = (0,1,2)
   orthogonal_init: bool = False
   out_dim: int = 1
 
@@ -215,7 +216,8 @@ class Critic(nn.Module):
       else:
         x = nn.Dense(feat)(x)
       if self.use_layer_norm:
-        if not self.only_penultimate_norm or i == len(self.arch) - 1:
+        # if not self.only_penultimate_norm or i == len(self.arch) - 1:
+        if i in self.layer_norm_index:
           x = nn.LayerNorm()(x)
       x = self.act(x)
 

@@ -20,8 +20,9 @@ from utilities.traj_dataset import get_nstep_dataset
 
 class ReplayBuffer(object):
 
-  def __init__(self, max_size, data=None):
+  def __init__(self, max_size, batch_size, data=None):
     self._max_size = max_size
+    self._batch_size = batch_size
     self._next_idx = 0
     self._size = 0
     self._initialized = False
@@ -85,8 +86,8 @@ class ReplayBuffer(object):
       batch["dones"],
     )
 
-  def sample(self, batch_size):
-    indices = np.random.randint(len(self), size=batch_size)
+  def sample(self, ):
+    indices = np.random.randint(len(self), size=self._batch_size)
     return self.select(indices)
 
   def select(self, indices):

@@ -139,7 +139,7 @@ class DiffusionQL(Algo):
 
         self._train_states['policy'] = TrainState.create(
             params=policy_params,
-            tx=get_optimizer(self.config.lr_decay),
+            tx=get_optimizer(self.config.lr_decay, weight_decay=0.0),
             apply_fn=None
         )
 
@@ -147,7 +147,7 @@ class DiffusionQL(Algo):
             next_rng(), jnp.zeros((10, self.action_dim))
         )
         self._train_states['policy_dist'] = TrainState.create(
-            params=policy_dist_params, tx=get_optimizer(), apply_fn=None
+            params=policy_dist_params, tx=get_optimizer(weight_decay=0.0), apply_fn=None
         )
 
         qf1_params = self.qf.init(
@@ -167,13 +167,13 @@ class DiffusionQL(Algo):
         )
 
         self._train_states['qf1'] = TrainState.create(
-            params=qf1_params, tx=get_optimizer(weight_decay=0.0), apply_fn=None
+            params=qf1_params, tx=get_optimizer(), apply_fn=None
         )
         self._train_states['qf2'] = TrainState.create(
-            params=qf2_params, tx=get_optimizer(weight_decay=0.0), apply_fn=None
+            params=qf2_params, tx=get_optimizer(), apply_fn=None
         )
         self._train_states['vf'] = TrainState.create(
-            params=vf_params, tx=get_optimizer(weight_decay=0.0), apply_fn=None,
+            params=vf_params, tx=get_optimizer(), apply_fn=None,
         )
         self._tgt_params = deepcopy(
             {
@@ -946,14 +946,26 @@ class DiffusionQL(Algo):
             else:
                 return 1.0
             
+    # @property
+    # def diff_annealing_coef(self):
+    #     if self.config.diff_annealing:
+    #         if self._total_steps < self.config.train_steps // 4:
+    #                 return self.config.diff_coef
+    #         else:
+    #                 t = self._total_steps - self.config.train_steps // 4
+    #                 T = self.config.train_steps - self.config.train_steps // 4
+    #                 return self.config.diff_coef * ( 0.505 + 0.495 * math.cos(math.pi * t / T))
+    #     else:
+    #         return self.config.diff_coef
+    
     @property
     def diff_annealing_coef(self):
         if self.config.diff_annealing:
-            if self._total_steps < self.config.train_steps // 4:
-                    return self.config.diff_coef
+            t = self._total_steps
+            T = self.config.constraint_steps
+            if t <= T:
+                return self.config.diff_coef * ( 0.5 + 0.5 * math.cos(math.pi * t / T))
             else:
-                    t = self._total_steps - self.config.train_steps // 4
-                    T = self.config.train_steps - self.config.train_steps // 4
-                    return self.config.diff_coef * ( 0.505 + 0.495 * math.cos(math.pi * t / T))
+                return 0
         else:
             return self.config.diff_coef

@@ -27,7 +27,7 @@ from experiments.constants import (
   ENVNAME_MAP,
 )
 from utilities.jax_utils import batch_to_jax
-from utilities.replay_buffer import get_d4rl_dataset
+from utilities.replay_buffer import get_d4rl_dataset, ReplayBuffer
 from utilities.sampler import TrajSampler
 from utilities.utils import (
   Timer,
@@ -197,27 +197,18 @@ class MFTrainer(Trainer):
       gym.make(self._cfgs.env), self._cfgs.max_traj_length
     )
 
+    # OPER constant
+    if self._env == ENV.Mujoco:
+      BASE_PROB = 0
+    elif self._env == ENV.Antmaze:
+      BASE_PROB = 0
+    elif self._env == ENV.Kitchen or self._env == ENV.Adroit:
+      BASE_PROB = 0
+
     norm_reward = self._cfgs.norm_reward
     if 'antmaze' in self._cfgs.env:
       norm_reward = False
-
-    # OPER constant
-    if self._env == ENV.Mujoco:
-      ITER = 5
-      STD = 2
-      EPS = 0.1
-      BASE_PROB = 0
-    elif self._env == ENV.Antmaze:
-      ITER = 3
-      STD = 5
-      EPS = 0.1
-      BASE_PROB = 0.2
-    elif self._env == ENV.Kitchen or self._env == ENV.Adroit:
-      ITER = 4
-      STD = 0.5
-      EPS = 0.1
-      BASE_PROB = 0
-
+    
     dataset = get_d4rl_dataset(
       eval_sampler.env,
       self._cfgs.algo_cfg.nstep,
@@ -238,15 +229,15 @@ class MFTrainer(Trainer):
       norm_obs(dataset, self._obs_mean, self._obs_std, self._obs_clip)
 
       if self._env == ENV.Antmaze:
-        if self._cfgs.algo_cfg.loss_type in ['IQL', 'Rainbow']:
-          # dataset["rewards"] -= 1
+        if self._cfgs.algo_cfg.loss_type == 'IQL':
+          dataset["rewards"] -= 1
+        elif self._cfgs.algo_cfg.loss_type == 'Rainbow':
           pass
         else: 
           dataset["rewards"] = (dataset["rewards"] - 0.5) * 4
-      else:
-        min_r, max_r = np.min(dataset["rewards"]), np.max(dataset["rewards"])
-        dataset["rewards"] = (dataset["rewards"] - min_r) / (max_r - min_r)
-        # dataset["rewards"] = (dataset["rewards"] - 0.5) * 2
+      # else:
+      #   min_r, max_r = np.min(dataset["rewards"]), np.max(dataset["rewards"])
+      #   dataset["rewards"] = (dataset["rewards"] - min_r) / (max_r - min_r)
 
     # set sampler
     dataset = Dataset(dataset, self._cfgs.state_sigma, self._cfgs.action_sigma, self._cfgs.clip_action)
@@ -256,22 +247,6 @@ class MFTrainer(Trainer):
         dist = dataset._data['returns']
         dist = (dist - dist.min()) / (dist.max() - dist.min()) + BASE_PROB
         probs = dist / dist.sum()
-      elif self._cfgs.priority=='adv':
-        weight_list = []
-        for seed in range(1, 4):
-          wp = Path(__file__).absolute().parent.parent / 'weights' / f'{self._cfgs.env}_{seed}.npy'
-          res = np.load(wp, allow_pickle=True).item()
-          num_iter, bc_eval_steps = res['iter'], res['eval_steps']
-          assert ITER <= num_iter
-          weight_list.append(res[ITER])
-        weight = np.stack(weight_list, axis=0).mean(axis=0)
-        weight = weight - weight.min()
-        probs = weight / weight.sum()
-        size = dataset.size()
-        scale = STD / (probs.std() * size)
-        probs = scale*(probs - 1/size) + 1/size
-        probs = np.maximum(probs, EPS/size)
-        probs = probs/probs.sum() # norm to 1 again
       else:
         raise NotImplementedError(f'prioritiy is measured by return or adv. {self._cfgs.priority} is not supported.')
     
@@ -287,6 +262,59 @@ class MFTrainer(Trainer):
     dataset.set_sampler(sampler)
 
     return dataset, eval_sampler
+  
+  
+  def _setup_d4rl_online(self):
+    eval_sampler = TrajSampler(
+      gym.make(self._cfgs.env), self._cfgs.max_traj_length
+    )
+    assert not self._cfgs.obs_norm
+
+    norm_reward = self._cfgs.norm_reward
+    if 'antmaze' in self._cfgs.env:
+      norm_reward = False
+
+    dataset = get_d4rl_dataset(
+      eval_sampler.env,
+      self._cfgs.algo_cfg.nstep,
+      self._cfgs.algo_cfg.discount,
+      norm_reward=norm_reward,
+    )
+    
+    dataset["actions"] = np.clip(
+        dataset["actions"], -self._cfgs.clip_action, self._cfgs.clip_action
+      )
+
+    # let the reward from online interaction be normalized as offline data does
+    if norm_reward:
+      return_min, return_max = np.min(dataset['returns']), np.max(dataset['returns'])
+      reward_fn = lambda r : r / (return_max - return_min) * 1000
+    else:
+      reward_fn = lambda r : r
+      
+    min_r, max_r = np.min(dataset["rewards"]), np.max(dataset["rewards"])
+    def reward_fn2(r0):
+      r = r0 * self._cfgs.reward_scale + self._cfgs.reward_bias
+      if self._env == ENV.Kitchen or self._env == ENV.Adroit or self._env == ENV.Antmaze:
+        if self._env == ENV.Antmaze:
+          if self._cfgs.algo_cfg.loss_type == 'IQL':
+            r -= 1
+          if self._cfgs.algo_cfg.loss_type == 'Rainbow':
+            pass
+          else: 
+            r = (r - 0.5) * 4
+        # else:
+          # r = (r - min_r) / (max_r - min_r)
+      return r
+
+    dataset["rewards"] = reward_fn2(dataset["rewards"])
+    # set sampler: just use uniform sampler even if oper is true
+    max_size = dataset["rewards"].shape[0] + self._cfgs.online_epochs * self._cfgs.n_train_step_per_epoch
+    buffer = ReplayBuffer(max_size, self._cfgs.batch_size, dataset)
+
+    env = gym.make(self._cfgs.env)
+    
+    return env, buffer, eval_sampler, lambda r : reward_fn2(reward_fn(r))
 
   def _setup_rlup(self):
     path = Path(__file__).absolute().parent.parent / 'data'
@@ -326,6 +354,28 @@ class MFTrainer(Trainer):
       self._cfgs.algo_cfg.target_entropy = -np.prod(action_space.shape).item()
 
     return dataset, eval_sampler
+  
+  def _setup_replay_buffer(self):
+    self._obs_mean = 0
+    self._obs_std = 1
+    self._obs_clip = np.inf
+
+    dataset_type = DATASET_MAP[self._cfgs.dataset]
+
+    if dataset_type == DATASET.D4RL:
+      env, buffer, eval_sampler, reward_fn = self._setup_d4rl_online()
+    else:
+      raise NotImplementedError
+
+    self._observation_dim = eval_sampler.env.observation_space.shape[0]
+    self._action_dim = eval_sampler.env.action_space.shape[0]
+    self._max_action = float(eval_sampler.env.action_space.high[0])
+
+    if self._cfgs.algo_cfg.target_entropy >= 0.0:
+      action_space = eval_sampler.env.action_space
+      self._cfgs.algo_cfg.target_entropy = -np.prod(action_space.shape).item()
+
+    return env, buffer, eval_sampler, reward_fn
 
   def _setup_policy(self):
     if self._algo_type in [ALGO.MISA, ALGO.CRR, ALGO.IQL, ALGO.CQL]:
