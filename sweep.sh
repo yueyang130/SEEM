@@ -195,6 +195,8 @@ FINETUNE=True INTERACT_METHOD=dpmensemble CONSTRAINT=1 TASK=gym ALPHA=2.0 QF_LAY
 FINETUNE=True INTERACT_METHOD=dpmensemble CONSTRAINT=3 TASK=gym ALPHA=2.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job_slurm.sh
 FINETUNE=True INTERACT_METHOD=dpmensemble CONSTRAINT=2 TASK=gym ALPHA=2.0 QF_LAYER_NORM=True NORM_REW=True REW_SCALE=10 bash scripts/launch_job_slurm.sh
 
+OPER=True TWO_SAMPLER=True bash scripts/launch_job_slurm.sh
+
 ALGO=diff-TD3 NOTES=ablate_LN REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 QF_LAYER_NORM=True LAYER_NORM_INDEX=0 bash scripts/launch_job_slurm.sh
 ALGO=diff-TD3 NOTES=ablate_LN REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 QF_LAYER_NORM=True LAYER_NORM_INDEX=0,1 bash scripts/launch_job_slurm.sh
 ALGO=diff-TD3 NOTES=ablate_LN REW_SCALE=10.0 TASK=antmaze ALPHA=2.0 QF_LAYER_NORM=True LAYER_NORM_INDEX=0,1,2 bash scripts/launch_job_slurm.sh

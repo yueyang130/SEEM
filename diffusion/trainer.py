@@ -215,9 +215,11 @@ class DiffusionTrainer(MFTrainer):
 
     # per-game hyperparameters
     self._cfgs.algo_cfg.max_grad_norm = hyperparameters[self._cfgs.env]['gn']
-    if hyperparameters[self._cfgs.env]['diff_coef']:
+    if 'diff_coef' in hyperparameters[self._cfgs.env] and hyperparameters[self._cfgs.env]['diff_coef']:
       self._cfgs.algo_cfg.diff_coef = hyperparameters[self._cfgs.env]['diff_coef']
     self._cfgs.oper = hyperparameters[self._cfgs.env]['oper']
+    if 'two_sampler' in hyperparameters[self._cfgs.env] and hyperparameters[self._cfgs.env]['two_sampler']:
+      self._cfgs.two_sampler = hyperparameters[self._cfgs.env]['two_sampler']
     
     self._cfgs.algo_cfg.lr_decay_steps = \
       self._cfgs.n_epochs * self._cfgs.n_train_step_per_epoch
