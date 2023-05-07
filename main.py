@@ -9,6 +9,16 @@ import utils
 import TD3_BC
 import time
 
+def cosine_similarity(m1, m2):
+
+    dot_product = torch.dot(m1, m2)
+    m1_norm = torch.norm(m1, p=2)
+    m2_norm = torch.norm(m2, p=2)
+
+    similarity = dot_product / (m1_norm * m2_norm)
+    return similarity.item()
+        
+
 # Runs policy for X episodes and returns D4RL score
 # A fixed seed is used for the eval environment
 def eval_policy(policy, env_name, seed, mean, std, seed_offset=100, eval_episodes=10):
@@ -87,6 +97,9 @@ if __name__ == "__main__":
     parser.add_argument("--bc_coef", default=1.0, type=float)
     parser.add_argument("--reward_scale", default=1.0, type=float)
     parser.add_argument("--reward_bias", default=0, type=float)
+    
+    parser.add_argument("--model_freq", default=10000, type=int)
+    
     
     args = parser.parse_args()
 
@@ -196,6 +209,8 @@ if __name__ == "__main__":
 
     # time0 = time.time()
     evaluations = []
+    q1_models = []
+    q2_models = []
     for t in range(int(args.max_timesteps)):
         infos = policy.train(replay_buffer, args.two_sampler)
         if (t + 1) % args.log_freq == 0:
@@ -209,6 +224,30 @@ if __name__ == "__main__":
             wandb.log({f'eval/avg10_score': np.mean(evaluations[-min(10, len(evaluations)):])}, step=t+1)
             # np.save(f"./results/{file_name}", evaluations)
             if args.save_model: policy.save(f"./models/{file_name}")
+            
+        if (t + 1) % args.model_freq == 0:
+            param1 = torch.cat([param.view(-1) for param in policy.critic.q1.parameters()])
+            param2 = torch.cat([param.view(-1) for param in policy.critic.q2.parameters()])
+            q1_models.append(param1)
+            q2_models.append(param2)
+        
+    steps = [(t+1)*args.model_freq for t in range(len(q1_models))] 
+    sim1 = [cosine_similarity(m, q1_models[-1]) for m in q1_models]
+    sim2 = [cosine_similarity(m, q2_models[-1]) for m in q2_models]
+    
+    data1 = [[x, y] for (x, y) in zip(steps, sim1)]
+    table1 = wandb.Table(data=data1, columns = ["steps", "similarity"])
+    wandb.log(
+{"cosine similarity of q1" : wandb.plot.line(table1, "steps", "similarity",
+        title="cosine similarity of q1")})   
+    
+    data2 = [[x, y] for (x, y) in zip(steps, sim2)]
+    table2 = wandb.Table(data=data2, columns = ["steps", "similarity"])
+    wandb.log(
+{"cosine similarity of q2" : wandb.plot.line(table2, "steps", "similarity",
+        title="cosine similarity of q2")})  
+    wandb.finish() 
+    
         # if (t + 1) % 100 == 0:
         # 	dt = time.time() - time0
         # 	time0 += dt

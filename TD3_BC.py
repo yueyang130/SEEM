@@ -205,9 +205,19 @@ class TD3_BC(object):
 				"lambda": lmbda.cpu(), 
 			}
 
+		def flatten_parameters(model):
+			return torch.cat([param.view(-1) for param in model.parameters()])
+
+		def model_weights_norm(m1):
+			m1_flat = flatten_parameters(m1)
+			m1_norm = torch.norm(m1_flat, p=2)
+			return m1_norm.item()
+
 		return {
 			"Q1": current_Q1.mean().cpu(),
 			"Q2": current_Q2.mean().cpu(),
+			"Q1_norm": model_weights_norm(self.critic.q1),
+			"Q2_norm": model_weights_norm(self.critic.q2),
 			**actor_infos,
 		}
 
