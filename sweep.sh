@@ -18,5 +18,8 @@ TAG=online_per_v2 TASK=gym ALPHA=2.5 GUIDE_COEF=1.0 RESAMPLE=True ONLINE_PER=1 P
 TAG=similarity TASK=gym ALPHA=2.5 BC_COEF=0 bash launch_job_slurm.sh
 TAG=similarity TASK=antmaze ALPHA=2.5 BC_COEF=0 REW_SCALE=10.0 bash launch_job_slurm.sh
 
+TAG=similarity_v2 TASK=gym ALPHA=2.5 BC_COEF=0 bash launch_job_slurm.sh
+TAG=similarity_v2 TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 bash launch_job_slurm.sh
 
+TAG=similarity_v2_1000 TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 bash launch_job_slurm.sh
 

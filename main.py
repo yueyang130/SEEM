@@ -75,7 +75,7 @@ if __name__ == "__main__":
     parser.add_argument("--expl_noise", default=0.1)                # Std of Gaussian exploration noise
     parser.add_argument("--batch_size", default=256, type=int)      # Batch size for both actor and critic
     parser.add_argument("--discount", default=0.99)                 # Discount factor
-    parser.add_argument("--tau", default=0.005)                     # Target network update rate
+    parser.add_argument("--tau", default=0.005, type=float)                     # Target network update rate
     parser.add_argument("--policy_noise", default=0.2)              # Noise added to target policy during critic update
     parser.add_argument("--noise_clip", default=0.5)                # Range to clip target policy noise
     parser.add_argument("--policy_freq", default=2, type=int)       # Frequency of delayed policy updates
@@ -211,6 +211,8 @@ if __name__ == "__main__":
     evaluations = []
     q1_models = []
     q2_models = []
+    log_similairty = False
+    QLIMIT = replay_buffer.reward.max() / (1-args.discount) * 1000
     for t in range(int(args.max_timesteps)):
         infos = policy.train(replay_buffer, args.two_sampler)
         if (t + 1) % args.log_freq == 0:
@@ -224,12 +226,25 @@ if __name__ == "__main__":
             wandb.log({f'eval/avg10_score': np.mean(evaluations[-min(10, len(evaluations)):])}, step=t+1)
             # np.save(f"./results/{file_name}", evaluations)
             if args.save_model: policy.save(f"./models/{file_name}")
+        
+        if not log_similairty and infos['Q1'] >  QLIMIT:
+            log_similairty = True
+            base_model_step = t+1
+            base_model1 = torch.cat([param.view(-1) for param in policy.critic.q1.parameters()])
+            base_model2 = torch.cat([param.view(-1) for param in policy.critic.q2.parameters()])
+            wandb.log({f'q1_similarity': 1}, step=t+1)
+            wandb.log({f'q2_similarity': 1}, step=t+1)
             
         if (t + 1) % args.model_freq == 0:
             param1 = torch.cat([param.view(-1) for param in policy.critic.q1.parameters()])
             param2 = torch.cat([param.view(-1) for param in policy.critic.q2.parameters()])
             q1_models.append(param1)
             q2_models.append(param2)
+            
+        if log_similairty and (t + 1) % args.model_freq == 0:
+            wandb.log({f'q1_similarity': cosine_similarity(base_model1, param1)}, step=t+1)
+            wandb.log({f'q2_similarity': cosine_similarity(base_model2, param2)}, step=t+1)
+            
         
     steps = [(t+1)*args.model_freq for t in range(len(q1_models))] 
     sim1 = [cosine_similarity(m, q1_models[-1]) for m in q1_models]
