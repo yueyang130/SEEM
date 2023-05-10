@@ -29,3 +29,6 @@ TAG=similarity_ntk TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 OPTIMIZER=sgd bash launc
 TAG=similarity_ntk TASK=gym ALPHA=2.5 BC_COEF=0 TAU=0.005 OPTIMIZER=sgd bash launch_job_slurm.sh
 TAG=similarity_ntk TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 OPTIMIZER=adam bash launch_job_slurm.sh
 
+
+TAG=similarity_grad TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 OPTIMIZER=adam bash launch_job_slurm.sh
+

@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import torch.nn.functional as F
 import gym
 import argparse
 import os
@@ -18,7 +19,23 @@ def cosine_similarity(m1, m2):
     similarity = dot_product / (m1_norm * m2_norm)
     return similarity.item()
 
-import torch
+def cosine_similarity_matrix(input_tensor):
+
+    # Normalize the input tensor along the feature dimension (n_dim)
+    normalized_input = F.normalize(input_tensor, p=2, dim=1)
+
+    # Calculate the dot product between the normalized tensors to get the cosine similarity matrix
+    cosine_similarity_matrix = torch.mm(normalized_input, normalized_input.t()).cpu()
+
+    # Create a diagonal mask and set the diagonal elements to zero
+    mask = torch.eye(input_tensor.shape[0]).bool()
+
+    # Apply the mask to the cosine similarity matrix
+    cosine_similarity_matrix.masked_fill_(mask, 0)
+
+    # Reshape the result to a one-dimensional tensor
+    return cosine_similarity_matrix.flatten()
+
 
 def compute_ntk(model, states, actions):
     N = states.size(0)
@@ -164,12 +181,12 @@ if __name__ == "__main__":
     
     state_dim = env.observation_space.shape[0]
     action_dim = env.action_space.shape[0] 
-    max_action = float(env.action_space.high[0])
+    _max_action = float(env.action_space.high[0])
 
     kwargs = {
         "state_dim": state_dim,
         "action_dim": action_dim,
-        "max_action": max_action,
+        "max_action": _max_action,
         "discount": args.discount,
         "tau": args.tau,
         # generate weight
@@ -182,8 +199,8 @@ if __name__ == "__main__":
         "eps": args.eps,
         "eps_max": args.eps_max,
         # TD3
-        "policy_noise": args.policy_noise * max_action,
-        "noise_clip": args.noise_clip * max_action,
+        "policy_noise": args.policy_noise * _max_action,
+        "noise_clip": args.noise_clip * _max_action,
         "policy_freq": args.policy_freq,
         "qf_layer_norm": args.qf_layer_norm,
         # TD3 + BC
@@ -252,6 +269,7 @@ if __name__ == "__main__":
     ntk_list = []
     random_batch_grad_list = []
     fix_batch_grad_list = []
+    pi_list = []
     log_similairty = False
     fix_batch = replay_buffer.sample(uniform=True, bs=2560)
     ntk_states, ntk_actions = fix_batch[:2] 
@@ -291,24 +309,39 @@ if __name__ == "__main__":
             ntk = compute_ntk(policy.critic, ntk_states, ntk_actions)
             ntk_list.append(ntk)
             
-            fix_batch_grad = policy.compute_grad(fix_batch)
+            fix_batch_grad, fix_batch_Q, fix_batch_max_Q, fix_batch_pi = policy.compute_grad(fix_batch)
+            pi_sim_varying_state = cosine_similarity_matrix(fix_batch_pi).mean()
             random_batch_grad_list.append(random_batch_grad)
             fix_batch_grad_list.append(fix_batch_grad)
+            pi_list.append(fix_batch_pi)
+            
+            wandb.log({
+                'stat/data_Q': fix_batch_Q.mean(),
+                'stat/data_Q_std': fix_batch_Q.std(),
+                'stat/max_Q': fix_batch_max_Q.mean(),
+                'stat/max_Q_std': fix_batch_max_Q.std(),
+                'stat/pi_sim_varying_state': pi_sim_varying_state,
+                }, step=t+1)
             
         # if log_similairty and (t + 1) % args.model_freq == 0:
         #     wandb.log({f'q1_similarity': cosine_similarity(base_model1, param1)}, step=t+1)
         #     wandb.log({f'q2_similarity': cosine_similarity(base_model2, param2)}, step=t+1)
             
-        
+    # similarity between two vectors
     steps = [(t+1)*args.model_freq for t in range(len(q1_models))] 
     model_sim = [cosine_similarity(m, q1_models[-1]) for m in q1_models]
     # sim2 = [cosine_similarity(m, q2_models[-1]) for m in q2_models]
     
+    # similarity between two matrix
     flat_ntks = [torch.reshape(ntk, shape=(-1,)) for ntk in ntk_list]
     ntk_sim = [cosine_similarity(flat_ntk, flat_ntks[-1]) for flat_ntk in flat_ntks]
     
+    # similarity between two vectors
     random_grad_sim = [cosine_similarity(g, random_batch_grad_list[-1]) for g in random_batch_grad_list]
     fix_grad_sim = [cosine_similarity(g, fix_batch_grad_list[-1]) for g in fix_batch_grad_list]
+    
+    # similarity between two batch of vectors
+    pi_sim_varying_step = [F.cosine_similarity(pi, pi_list[-1]).mean() for pi in pi_list]
     
     
     model_data = [[x, y] for (x, y) in zip(steps, model_sim)]
@@ -335,6 +368,12 @@ if __name__ == "__main__":
 {"cosine similarity of fix batch grad" : wandb.plot.line(fix_grad_table, "steps", "similarity",
         title="cosine similarity of fix batch grad")})   
     
+    pi_sim_varying_data = [[x, y] for (x, y) in zip(steps, pi_sim_varying_step)]
+    pi_sim_varying_table = wandb.Table(data=pi_sim_varying_data, columns = ["steps", "similarity"])
+    wandb.log(
+{"cosine similarity of pi with varying step" : wandb.plot.line(pi_sim_varying_table, "steps", "similarity",
+        title="cosine similarity of pi with varying step")})   
+    
     
     
 #     data2 = [[x, y] for (x, y) in zip(steps, sim2)]
@@ -354,7 +393,8 @@ if __name__ == "__main__":
         'steps': steps,
         'q1_models': q1_models,
         'ntks': ntk_list,
-        'random_batch_gradf_list': random_batch_grad_list,
+        'random_batch_grad_list': random_batch_grad_list,
         'fix_batch_grad_list': fix_batch_grad_list,
+        'pi_list': pi_list,
     }, f'results/{args.env}.pt')
         

@@ -152,11 +152,16 @@ class TD3_BC(object):
         critic_loss = F.mse_loss(current_Q1, target_Q, reduction='none') + F.mse_loss(current_Q2, target_Q, reduction='none')
         critic_loss = critic_loss.mean()
 
-        # Optimize the critic
+        # critic grad
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         grad = [p.grad for p in self.critic.q1.parameters() if p.grad is not None]
-        return flatten_grads(grad)
+        
+        # find max action and max Q
+        pi = self.actor(state)
+        max_Q = self.critic.Q1(state, pi)
+        
+        return flatten_grads(grad).cpu(), current_Q1, max_Q, pi.cpu()
         
 
     def train(self, replay_buffer, two_sampler=False):
@@ -239,7 +244,7 @@ class TD3_BC(object):
                 target_param.data.copy_(self.tau * param.data + (1 - self.tau) * target_param.data)
 
             # log actor training
-            actor_infos = {
+            actor_infos = { 
                 "critic_loss": critic_loss.mean().cpu(),
                 "actor_loss": actor_loss.mean().cpu(),
                 "constraint_loss": constraint_loss.mean().cpu(),

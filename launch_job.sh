@@ -44,7 +44,7 @@ do
     # for level in medium medium-expert
     # for level in medium-replay
     do
-      echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --seed=${i} --env=${env}-${level}-v2 &"
+      echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --seed=${i} --env=${env}-${level}-v2 --max_timesteps=300000 &"
     done
     done
   elif [ "$TASK" = "rl_unplugged" ]; then
