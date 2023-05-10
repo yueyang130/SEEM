@@ -14,13 +14,14 @@ REW_BIAS="${REW_BIAS:-0}"
 ONLINE_PER="${ONLINE_PER:-1}"
 PER_TEMP="${PER_TEMP:-0.6}"
 RESAMPLE="${RESAMPLE:-False}"
-TAU="${TAU:-0.05}"
+TAU="${TAU:-0.005}"
+OPTIMIZER="${OPTIMIZER:-adam}"
 
 
 # BASE_CMD="WANDB_API_KEY=$WANDB_API_KEY python main.py --bc_eval=0 --alpha=$ALPHA --bc_coef=$BC_COEF --qf_layer_norm=$QF_LAYER_NORM --reward_scale=$REW_SCALE \
 # --reward_bias=$REW_BIAS --online_per=$ONLINE_PER --per_temp=$PER_TEMP --tag=$TAG"
 BASE_CMD="WANDB_API_KEY=$WANDB_API_KEY python main.py --bc_eval=0 --alpha=$ALPHA --bc_coef=$BC_COEF --qf_layer_norm=$QF_LAYER_NORM --reward_scale=$REW_SCALE \
---reward_bias=$REW_BIAS --tau=$TAU --tag=$TAG"
+--reward_bias=$REW_BIAS --tau=$TAU --tag=$TAG --optimizer=$OPTIMIZER"
 
 if [ "$RESAMPLE" = "True" ];then
   BASE_CMD="$BASE_CMD --resample"
@@ -35,8 +36,9 @@ do
     #   echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --seed=${i} --env=${env} &"
     #   sleep 1
     # done
-    # for env in halfcheetah walker2d hopper
+    # for env in hopper halfcheetah walker2d
     for env in hopper
+    # for env in 
     do
     for level in medium medium-replay medium-expert
     # for level in medium medium-expert

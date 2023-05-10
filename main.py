@@ -17,6 +17,42 @@ def cosine_similarity(m1, m2):
 
     similarity = dot_product / (m1_norm * m2_norm)
     return similarity.item()
+
+import torch
+
+def compute_ntk(model, states, actions):
+    N = states.size(0)
+
+    # Function to flatten gradients of model parameters
+    def flatten_grads(grads):
+        return torch.cat([g.view(-1) for g in grads])
+
+    # Compute gradients for each input
+    grads = []
+    for i in range(N):
+        s = states[i].unsqueeze(0)
+        a = actions[i].unsqueeze(0)
+
+        # Feedforward the input through the model
+        output = model.Q1(s,a)
+
+        # Zero the model's gradients
+        model.zero_grad()
+
+        # Compute and store the gradients for each output dimension
+        output.backward()
+        grad = flatten_grads([p.grad for p in model.q1.parameters() if p.grad is not None])
+
+        # Stack gradients for the current input
+        grads.append(grad)
+
+    # Stack gradients for all inputs
+    grads_tensor = torch.stack(grads)
+
+    # Compute the NTK matrix using tensor operations
+    G = torch.einsum('ip,kp->ik', grads_tensor, grads_tensor)
+
+    return G.cpu()
         
 
 # Runs policy for X episodes and returns D4RL score
@@ -99,6 +135,7 @@ if __name__ == "__main__":
     parser.add_argument("--reward_bias", default=0, type=float)
     
     parser.add_argument("--model_freq", default=10000, type=int)
+    parser.add_argument("--optimizer", default='adam', type=str)
     
     
     args = parser.parse_args()
@@ -156,6 +193,7 @@ if __name__ == "__main__":
         "reweight_improve": args.reweight_improve,
         "reweight_constraint": args.reweight_constraint,
         "clip_constraint": args.clip_constraint,
+        "optimizer_type": args.optimizer,
     }
 
     wandb.init(project="TD3_BC", config={
@@ -210,61 +248,113 @@ if __name__ == "__main__":
     # time0 = time.time()
     evaluations = []
     q1_models = []
-    q2_models = []
+    # q2_models = []
+    ntk_list = []
+    random_batch_grad_list = []
+    fix_batch_grad_list = []
     log_similairty = False
+    fix_batch = replay_buffer.sample(uniform=True, bs=2560)
+    ntk_states, ntk_actions = fix_batch[:2] 
+    
     QLIMIT = replay_buffer.reward.max() / (1-args.discount) * 1000
     for t in range(int(args.max_timesteps)):
-        infos = policy.train(replay_buffer, args.two_sampler)
+        infos, random_batch_grad = policy.train(replay_buffer, args.two_sampler)
         if (t + 1) % args.log_freq == 0:
             for k, v in infos.items():
                 wandb.log({f'train/{k}': v}, step=t+1)
         # Evaluate episode
-        if (t + 1) % args.eval_freq == 0:
-            print(f"Time steps: {t+1}")
-            evaluations.append(eval_policy(policy, args.env, args.seed, mean, std, args.eval_episodes))
-            wandb.log({f'eval/score': evaluations[-1]}, step=t+1)
-            wandb.log({f'eval/avg10_score': np.mean(evaluations[-min(10, len(evaluations)):])}, step=t+1)
-            # np.save(f"./results/{file_name}", evaluations)
-            if args.save_model: policy.save(f"./models/{file_name}")
+        # if (t + 1) % args.eval_freq == 0:
+        #     print(f"Time steps: {t+1}")
+        #     evaluations.append(eval_policy(policy, args.env, args.seed, mean, std, args.eval_episodes))
+        #     wandb.log({f'eval/score': evaluations[-1]}, step=t+1)
+        #     wandb.log({f'eval/avg10_score': np.mean(evaluations[-min(10, len(evaluations)):])}, step=t+1)
+        #     # np.save(f"./results/{file_name}", evaluations)
+        #     if args.save_model: policy.save(f"./models/{file_name}")
         
-        if not log_similairty and infos['Q1'] >  QLIMIT:
-            log_similairty = True
-            base_model_step = t+1
-            base_model1 = torch.cat([param.view(-1) for param in policy.critic.q1.parameters()])
-            base_model2 = torch.cat([param.view(-1) for param in policy.critic.q2.parameters()])
-            wandb.log({f'q1_similarity': 1}, step=t+1)
-            wandb.log({f'q2_similarity': 1}, step=t+1)
+        # NTK
+        
+        
+        # if not log_similairty and infos['Q1'] >  QLIMIT:
+        #     log_similairty = True
+        #     base_model_step = t+1
+        #     base_model1 = torch.cat([param.view(-1) for param in policy.critic.q1.parameters()])
+        #     base_model2 = torch.cat([param.view(-1) for param in policy.critic.q2.parameters()])
+        #     wandb.log({f'q1_similarity': 1}, step=t+1)
+        #     wandb.log({f'q2_similarity': 1}, step=t+1)
             
         if (t + 1) % args.model_freq == 0:
             param1 = torch.cat([param.view(-1) for param in policy.critic.q1.parameters()])
-            param2 = torch.cat([param.view(-1) for param in policy.critic.q2.parameters()])
+            # param2 = torch.cat([param.view(-1) for param in policy.critic.q2.parameters()])
             q1_models.append(param1)
-            q2_models.append(param2)
+            # q2_models.append(param2)
             
-        if log_similairty and (t + 1) % args.model_freq == 0:
-            wandb.log({f'q1_similarity': cosine_similarity(base_model1, param1)}, step=t+1)
-            wandb.log({f'q2_similarity': cosine_similarity(base_model2, param2)}, step=t+1)
+            ntk = compute_ntk(policy.critic, ntk_states, ntk_actions)
+            ntk_list.append(ntk)
+            
+            fix_batch_grad = policy.compute_grad(fix_batch)
+            random_batch_grad_list.append(random_batch_grad)
+            fix_batch_grad_list.append(fix_batch_grad)
+            
+        # if log_similairty and (t + 1) % args.model_freq == 0:
+        #     wandb.log({f'q1_similarity': cosine_similarity(base_model1, param1)}, step=t+1)
+        #     wandb.log({f'q2_similarity': cosine_similarity(base_model2, param2)}, step=t+1)
             
         
     steps = [(t+1)*args.model_freq for t in range(len(q1_models))] 
-    sim1 = [cosine_similarity(m, q1_models[-1]) for m in q1_models]
-    sim2 = [cosine_similarity(m, q2_models[-1]) for m in q2_models]
+    model_sim = [cosine_similarity(m, q1_models[-1]) for m in q1_models]
+    # sim2 = [cosine_similarity(m, q2_models[-1]) for m in q2_models]
     
-    data1 = [[x, y] for (x, y) in zip(steps, sim1)]
-    table1 = wandb.Table(data=data1, columns = ["steps", "similarity"])
+    flat_ntks = [torch.reshape(ntk, shape=(-1,)) for ntk in ntk_list]
+    ntk_sim = [cosine_similarity(flat_ntk, flat_ntks[-1]) for flat_ntk in flat_ntks]
+    
+    random_grad_sim = [cosine_similarity(g, random_batch_grad_list[-1]) for g in random_batch_grad_list]
+    fix_grad_sim = [cosine_similarity(g, fix_batch_grad_list[-1]) for g in fix_batch_grad_list]
+    
+    
+    model_data = [[x, y] for (x, y) in zip(steps, model_sim)]
+    table1 = wandb.Table(data=model_data, columns = ["steps", "similarity"])
     wandb.log(
 {"cosine similarity of q1" : wandb.plot.line(table1, "steps", "similarity",
         title="cosine similarity of q1")})   
     
-    data2 = [[x, y] for (x, y) in zip(steps, sim2)]
-    table2 = wandb.Table(data=data2, columns = ["steps", "similarity"])
+    ntk_data = [[x, y] for (x, y) in zip(steps, ntk_sim)]
+    ntk_table = wandb.Table(data=ntk_data, columns = ["steps", "similarity"])
     wandb.log(
-{"cosine similarity of q2" : wandb.plot.line(table2, "steps", "similarity",
-        title="cosine similarity of q2")})  
-    wandb.finish() 
+{"cosine similarity of ntk" : wandb.plot.line(ntk_table, "steps", "similarity",
+        title="cosine similarity of ntk")})   
+    
+    random_grad_data = [[x, y] for (x, y) in zip(steps, random_grad_sim)]
+    random_grad_table = wandb.Table(data=random_grad_data, columns = ["steps", "similarity"])
+    wandb.log(
+{"cosine similarity of random batch grad" : wandb.plot.line(random_grad_table, "steps", "similarity",
+        title="cosine similarity of random batch grad")})   
+    
+    fix_grad_data = [[x, y] for (x, y) in zip(steps, fix_grad_sim)]
+    fix_grad_table = wandb.Table(data=fix_grad_data, columns = ["steps", "similarity"])
+    wandb.log(
+{"cosine similarity of fix batch grad" : wandb.plot.line(fix_grad_table, "steps", "similarity",
+        title="cosine similarity of fix batch grad")})   
+    
+    
+    
+#     data2 = [[x, y] for (x, y) in zip(steps, sim2)]
+#     table2 = wandb.Table(data=data2, columns = ["steps", "similarity"])
+#     wandb.log(
+# {"cosine similarity of q2" : wandb.plot.line(table2, "steps", "similarity",
+#         title="cosine similarity of q2")})  
     
         # if (t + 1) % 100 == 0:
         # 	dt = time.time() - time0
         # 	time0 += dt
         # 	print(f"Time steps: {t+1}, speed: {round(100/dt, 1)}itr/s")
+        
+    wandb.finish() 
+    
+    torch.save({
+        'steps': steps,
+        'q1_models': q1_models,
+        'ntks': ntk_list,
+        'random_batch_gradf_list': random_batch_grad_list,
+        'fix_batch_grad_list': fix_batch_grad_list,
+    }, f'results/{args.env}.pt')
         
