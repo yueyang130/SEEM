@@ -36,15 +36,15 @@ do
     #   echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --seed=${i} --env=${env} &"
     #   sleep 1
     # done
-    # for env in hopper halfcheetah walker2d
-    for env in hopper
+    for env in hopper halfcheetah walker2d
+    # for env in hopper
     # for env in 
     do
-    # for level in medium medium-replay medium-expert
+    for level in medium medium-replay medium-expert
     # for level in medium medium-expert
-    for level in medium-replay
+    # for level in medium-replay
     do
-      echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --seed=${i} --env=${env}-${level}-v2 --max_timesteps=400000 &"
+      echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --seed=${i} --env=${env}-${level}-v2 --max_timesteps=1000000 &"
     done
     done
   elif [ "$TASK" = "rl_unplugged" ]; then

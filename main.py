@@ -328,9 +328,6 @@ if __name__ == "__main__":
         #     # np.save(f"./results/{file_name}", evaluations)
         #     if args.save_model: policy.save(f"./models/{file_name}")
         
-        # NTK
-        
-        
         # if not log_similairty and infos['Q1'] >  QLIMIT:
         #     log_similairty = True
         #     base_model_step = t+1
@@ -341,18 +338,17 @@ if __name__ == "__main__":
             
         if (t + 1) % args.model_freq == 0:
             param1 = torch.cat([param.view(-1) for param in policy.critic.q1.parameters()])
-            # param2 = torch.cat([param.view(-1) for param in policy.critic.q2.parameters()])
-            # q1_models.append(param1.cpu())
-            # q2_models.append(param2)
+            param2 = torch.cat([param.view(-1) for param in policy.critic.q2.parameters()])
+            q1_models.append(param1.cpu())
             
             ntk, batch_grads = compute_ntk(policy.critic, ntk_states, ntk_actions)
-            # ntk_list.append(ntk.cpu())
+            ntk_list.append(ntk.cpu())
             
             fix_batch_grad, fix_batch_Q, fix_batch_max_Q, fix_batch_pi = policy.compute_grad(fix_batch)
             pi_sim_varying_state = cosine_similarity_matrix(fix_batch_pi).mean()
-            # random_batch_grad_list.append(random_batch_grad.cpu())
-            # fix_batch_grad_list.append(fix_batch_grad.cpu())
-            # pi_list.append(fix_batch_pi.cpu())
+            random_batch_grad_list.append(random_batch_grad.cpu())
+            fix_batch_grad_list.append(fix_batch_grad.cpu())
+            pi_list.append(fix_batch_pi.cpu())
             with torch.no_grad():
                 fix_batch_next_pi = policy.actor(ntk_next_states)
             detect_matrix, eigenvalues, normed_eigenvalues = compute_detect_matrix(policy.critic, ntk_next_states, fix_batch_next_pi, batch_grads)
@@ -368,83 +364,70 @@ if __name__ == "__main__":
                 # 'stat/eigenvalues': eigenvalues.cpu(),
                 'stat/max_normed_eigenvalues': normed_eigenvalues.max().cpu(),
                 # 'stat/normed_eigenvalues': normed_eigenvalues.cpu(),
+                'sta/grad_norm': torch.norm(fix_batch_grad, p=2).cpu(),
                 }, step=t+1)
             
-            if fix_batch_max_Q.mean().item() > 1e10:
-                exit()
+            # if fix_batch_max_Q.mean().item() > 1e10:
+            #     exit()
             
         # if log_similairty and (t + 1) % args.model_freq == 0:
         #     wandb.log({f'q1_similarity': cosine_similarity(base_model1, param1)}, step=t+1)
         #     wandb.log({f'q2_similarity': cosine_similarity(base_model2, param2)}, step=t+1)
             
     # similarity between two vectors
-#     steps = [(t+1)*args.model_freq for t in range(len(q1_models))] 
-#     model_sim = [cosine_similarity(m, q1_models[-1]) for m in q1_models]
-#     # sim2 = [cosine_similarity(m, q2_models[-1]) for m in q2_models]
+    steps = [(t+1)*args.model_freq for t in range(len(q1_models))] 
+    model_sim = [cosine_similarity(m, q1_models[-1]) for m in q1_models]
     
-#     # similarity between two matrix
-#     flat_ntks = [torch.reshape(ntk, shape=(-1,)) for ntk in ntk_list]
-#     ntk_sim = [cosine_similarity(flat_ntk, flat_ntks[-1]) for flat_ntk in flat_ntks]
+    # similarity between two matrix
+    flat_ntks = [torch.reshape(ntk, shape=(-1,)) for ntk in ntk_list]
+    ntk_sim = [cosine_similarity(flat_ntk, flat_ntks[-1]) for flat_ntk in flat_ntks]
     
-#     # similarity between two vectors
-#     random_grad_sim = [cosine_similarity(g, random_batch_grad_list[-1]) for g in random_batch_grad_list]
-#     fix_grad_sim = [cosine_similarity(g, fix_batch_grad_list[-1]) for g in fix_batch_grad_list]
+    # similarity between two vectors
+    random_grad_sim = [cosine_similarity(g, random_batch_grad_list[-1]) for g in random_batch_grad_list]
+    fix_grad_sim = [cosine_similarity(g, fix_batch_grad_list[-1]) for g in fix_batch_grad_list]
     
-#     # similarity between two batch of vectors
-#     pi_sim_varying_step = [F.cosine_similarity(pi, pi_list[-1]).mean() for pi in pi_list]
-    
-    
-#     model_data = [[x, y] for (x, y) in zip(steps, model_sim)]
-#     table1 = wandb.Table(data=model_data, columns = ["steps", "similarity"])
-#     wandb.log(
-# {"cosine similarity of q1" : wandb.plot.line(table1, "steps", "similarity",
-#         title="cosine similarity of q1")})   
-    
-#     ntk_data = [[x, y] for (x, y) in zip(steps, ntk_sim)]
-#     ntk_table = wandb.Table(data=ntk_data, columns = ["steps", "similarity"])
-#     wandb.log(
-# {"cosine similarity of ntk" : wandb.plot.line(ntk_table, "steps", "similarity",
-#         title="cosine similarity of ntk")})   
-    
-#     random_grad_data = [[x, y] for (x, y) in zip(steps, random_grad_sim)]
-#     random_grad_table = wandb.Table(data=random_grad_data, columns = ["steps", "similarity"])
-#     wandb.log(
-# {"cosine similarity of random batch grad" : wandb.plot.line(random_grad_table, "steps", "similarity",
-#         title="cosine similarity of random batch grad")})   
-    
-#     fix_grad_data = [[x, y] for (x, y) in zip(steps, fix_grad_sim)]
-#     fix_grad_table = wandb.Table(data=fix_grad_data, columns = ["steps", "similarity"])
-#     wandb.log(
-# {"cosine similarity of fix batch grad" : wandb.plot.line(fix_grad_table, "steps", "similarity",
-#         title="cosine similarity of fix batch grad")})   
-    
-#     pi_sim_varying_data = [[x, y] for (x, y) in zip(steps, pi_sim_varying_step)]
-#     pi_sim_varying_table = wandb.Table(data=pi_sim_varying_data, columns = ["steps", "similarity"])
-#     wandb.log(
-# {"cosine similarity of pi with varying step" : wandb.plot.line(pi_sim_varying_table, "steps", "similarity",
-#         title="cosine similarity of pi with varying step")})   
+    # similarity between two batch of vectors
+    pi_sim_varying_step = [F.cosine_similarity(pi, pi_list[-1]).mean() for pi in pi_list]
     
     
+    model_data = [[x, y] for (x, y) in zip(steps, model_sim)]
+    table1 = wandb.Table(data=model_data, columns = ["steps", "similarity"])
+    wandb.log(
+{"cosine similarity of q1" : wandb.plot.line(table1, "steps", "similarity",
+        title="cosine similarity of q1")})   
     
-#     data2 = [[x, y] for (x, y) in zip(steps, sim2)]
-#     table2 = wandb.Table(data=data2, columns = ["steps", "similarity"])
-#     wandb.log(
-# {"cosine similarity of q2" : wandb.plot.line(table2, "steps", "similarity",
-#         title="cosine similarity of q2")})  
+    ntk_data = [[x, y] for (x, y) in zip(steps, ntk_sim)]
+    ntk_table = wandb.Table(data=ntk_data, columns = ["steps", "similarity"])
+    wandb.log(
+{"cosine similarity of ntk" : wandb.plot.line(ntk_table, "steps", "similarity",
+        title="cosine similarity of ntk")})   
     
-        # if (t + 1) % 100 == 0:
-        # 	dt = time.time() - time0
-        # 	time0 += dt
-        # 	print(f"Time steps: {t+1}, speed: {round(100/dt, 1)}itr/s")
+    random_grad_data = [[x, y] for (x, y) in zip(steps, random_grad_sim)]
+    random_grad_table = wandb.Table(data=random_grad_data, columns = ["steps", "similarity"])
+    wandb.log(
+{"cosine similarity of random batch grad" : wandb.plot.line(random_grad_table, "steps", "similarity",
+        title="cosine similarity of random batch grad")})   
+    
+    fix_grad_data = [[x, y] for (x, y) in zip(steps, fix_grad_sim)]
+    fix_grad_table = wandb.Table(data=fix_grad_data, columns = ["steps", "similarity"])
+    wandb.log(
+{"cosine similarity of fix batch grad" : wandb.plot.line(fix_grad_table, "steps", "similarity",
+        title="cosine similarity of fix batch grad")})   
+    
+    pi_sim_varying_data = [[x, y] for (x, y) in zip(steps, pi_sim_varying_step)]
+    pi_sim_varying_table = wandb.Table(data=pi_sim_varying_data, columns = ["steps", "similarity"])
+    wandb.log(
+{"cosine similarity of pi with varying step" : wandb.plot.line(pi_sim_varying_table, "steps", "similarity",
+        title="cosine similarity of pi with varying step")})   
         
     wandb.finish() 
     
-    # torch.save({
-    #     'steps': steps,
-    #     'q1_models': q1_models,
-    #     'ntks': ntk_list,
-    #     'random_batch_grad_list': random_batch_grad_list,
-    #     'fix_batch_grad_list': fix_batch_grad_list,
-    #     'pi_list': pi_list,
-    # }, f'results/{args.env}.pt')
+    torch.save({
+        'steps': steps,
+        'q1_models': q1_models,
+        'ntks': ntk_list,
+        'random_batch_grad_list': random_batch_grad_list,
+        'fix_batch_grad_list': fix_batch_grad_list,
+        'pi_list': pi_list,
+    }, f'results/{args.env}.pt')
         

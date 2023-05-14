@@ -4,7 +4,7 @@ export $(env | grep -v "BASH_" | cut -d= -f1)
 
 PARTITION="${PARTITION:-RTX2080Ti}"
 # NODE="${NODE:-node08}"
-PROC="${PROC:-1}"
+PROC="${PROC:-2}"
 
 file_num=0
 command_num=0
