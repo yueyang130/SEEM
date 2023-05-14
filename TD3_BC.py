@@ -161,7 +161,11 @@ class TD3_BC(object):
         pi = self.actor(state)
         max_Q = self.critic.Q1(state, pi)
         
-        return flatten_grads(grad).cpu(), current_Q1, max_Q, pi.cpu()
+        grad = flatten_grads(grad).cpu()
+        # scale
+        grad = grad / (grad.shape[0])**0.5
+        
+        return grad.detach(), current_Q1.detach(), max_Q.detach(), pi.detach()
         
 
     def train(self, replay_buffer, two_sampler=False):
@@ -200,6 +204,8 @@ class TD3_BC(object):
         self.critic_optimizer.zero_grad()
         critic_loss.backward()
         grad = [p.grad for p in self.critic.q1.parameters() if p.grad is not None]
+        grad = flatten_grads(grad)
+        grad = grad / (grad.shape[0])**0.5
         self.critic_optimizer.step()
 
         # Delayed policy updates
@@ -265,8 +271,8 @@ class TD3_BC(object):
             "Q1_norm": model_weights_norm(self.critic.q1),
             "Q2_norm": model_weights_norm(self.critic.q2),
             **actor_infos,
-        }, flatten_grads(grad)
-
+        }, grad
+        
     def save(self, filename):
         torch.save(self.critic.state_dict(), filename + "_critic")
         torch.save(self.critic_optimizer.state_dict(), filename + "_critic_optimizer")

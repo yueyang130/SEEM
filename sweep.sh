@@ -30,5 +30,24 @@ TAG=similarity_ntk TASK=gym ALPHA=2.5 BC_COEF=0 TAU=0.005 OPTIMIZER=sgd bash lau
 TAG=similarity_ntk TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 OPTIMIZER=adam bash launch_job_slurm.sh
 
 
-TAG=similarity_grad TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 OPTIMIZER=adam bash launch_job_slurm.sh
+TAG=similarity_grad_v2 TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 OPTIMIZER=adam bash launch_job_slurm.sh
+
+
+eval "$(GPU=0 TAG=eigenvalue TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 DISCOUNT=0.95 OPTIMIZER=adam bash launch_job.sh)"
+eval "$(GPU=0 TAG=eigenvalue TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 DISCOUNT=0.94 OPTIMIZER=adam bash launch_job.sh)"
+eval "$(GPU=0 TAG=eigenvalue TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 DISCOUNT=0.93 OPTIMIZER=adam bash launch_job.sh)"
+eval "$(GPU=1 TAG=eigenvalue TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 DISCOUNT=0.92 OPTIMIZER=adam bash launch_job.sh)"
+eval "$(GPU=1 TAG=eigenvalue TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 DISCOUNT=0.91 OPTIMIZER=adam bash launch_job.sh)"
+eval "$(GPU=1 TAG=eigenvalue TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 DISCOUNT=0.90 OPTIMIZER=adam bash launch_job.sh)"
+
+
+eval "$(GPU=0 TAG=eigenvalue_v2 TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 DISCOUNT=0.99 OPTIMIZER=adam bash launch_job.sh)"
+eval "$(GPU=0 TAG=eigenvalue_v2 TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 DISCOUNT=0.95 OPTIMIZER=adam bash launch_job.sh)"
+eval "$(GPU=0 TAG=eigenvalue_v2 TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 DISCOUNT=0.93 OPTIMIZER=adam bash launch_job.sh)"
+
+eval "$(GPU=0 TAG=eigenvalue_v2 TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 DISCOUNT=0.92 OPTIMIZER=adam bash launch_job.sh)"
+eval "$(GPU=1 TAG=eigenvalue_v2 TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 DISCOUNT=0.91 OPTIMIZER=adam bash launch_job.sh)"
+eval "$(GPU=1 TAG=eigenvalue_v2 TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 DISCOUNT=0.90 OPTIMIZER=adam bash launch_job.sh)"
+eval "$(GPU=1 TAG=eigenvalue_v2 TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 DISCOUNT=0.85 OPTIMIZER=adam bash launch_job.sh)"
+eval "$(GPU=1 TAG=eigenvalue_v2 TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 DISCOUNT=0 OPTIMIZER=adam bash launch_job.sh)"
 
