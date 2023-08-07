@@ -57,7 +57,7 @@ do
     # for env in umaze-diverse-v0 large-diverse-v0
     # for env in medium-play-v0 large-diverse-v0
     do
-      echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --seed=${i} --env=antmaze-${level} --eval_freq=50000 --eval_episodes=100 &"
+      echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --seed=${i} --env=antmaze-${level} --eval_freq=1000000 --eval_episodes=1 &"
       sleep 1
     done
   elif [ "$TASK" = "kitchen" ]; then

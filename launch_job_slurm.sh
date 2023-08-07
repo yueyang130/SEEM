@@ -2,7 +2,7 @@
 
 export $(env | grep -v "BASH_" | cut -d= -f1)
 
-PARTITION="${PARTITION:-RTX2080Ti}"
+PARTITION="${PARTITION:-RTX3090}"
 # NODE="${NODE:-node08}"
 PROC="${PROC:-2}"
 
@@ -35,7 +35,7 @@ for file in "${file_dir}/${file_prefix}"_*.sh; do
     echo "wait" >> "$file"
     chmod +x "$file"    
 #   srun -J offbench -N 1 -p $PARTITION -w $NODE --gres gpu:1 bash "$file" &
-  srun -J offbench -N 1 -p $PARTITION --exclude=node09 --gres gpu:1 bash "$file" &
+  srun -J offbench -N 1 -p $PARTITION -w node06 --gres gpu:1 bash "$file" &
 done
 
 echo "生成的文件前缀为 ${file_prefix}"

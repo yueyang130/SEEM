@@ -10,3 +10,6 @@ results
 wandb
 .vscode
 weights
+DDPG_BC.py
+notebook.ipynb
+p220__Bairds_Counterexample.ipynb

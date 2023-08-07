@@ -364,7 +364,9 @@ if __name__ == "__main__":
                 # 'stat/eigenvalues': eigenvalues.cpu(),
                 'stat/max_normed_eigenvalues': normed_eigenvalues.max().cpu(),
                 # 'stat/normed_eigenvalues': normed_eigenvalues.cpu(),
-                'sta/grad_norm': torch.norm(fix_batch_grad, p=2).cpu(),
+                'stat/grad_norm': torch.norm(fix_batch_grad, p=2).cpu(),
+                'stat/data_action_norm':ntk_actions.pow(2).sum(dim=-1).sqrt().mean().cpu(),
+                'stat/pi_action_norm': fix_batch_pi.pow(2).sum(dim=-1).sqrt().mean().cpu(),
                 }, step=t+1)
             
             # if fix_batch_max_Q.mean().item() > 1e10:
@@ -373,6 +375,11 @@ if __name__ == "__main__":
         # if log_similairty and (t + 1) % args.model_freq == 0:
         #     wandb.log({f'q1_similarity': cosine_similarity(base_model1, param1)}, step=t+1)
         #     wandb.log({f'q2_similarity': cosine_similarity(base_model2, param2)}, step=t+1)
+    
+    print("In-distributional actions:")
+    print(ntk_actions)       
+    print("Policy actions:")
+    print(fix_batch_pi)       
             
     # similarity between two vectors
     steps = [(t+1)*args.model_freq for t in range(len(q1_models))] 
@@ -388,7 +395,7 @@ if __name__ == "__main__":
     
     # similarity between two batch of vectors
     pi_sim_varying_step = [F.cosine_similarity(pi, pi_list[-1]).mean() for pi in pi_list]
-    
+
     
     model_data = [[x, y] for (x, y) in zip(steps, model_sim)]
     table1 = wandb.Table(data=model_data, columns = ["steps", "similarity"])

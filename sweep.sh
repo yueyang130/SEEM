@@ -54,3 +54,7 @@ eval "$(GPU=1 TAG=eigenvalue_v2 TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 DISCOUNT=0 
 
 TAG=similarity_final_v2 START=1 RUNS=3 TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 OPTIMIZER=adam bash launch_job_slurm.sh
 TAG=similarity_final_v2 START=1 RUNS=3 TASK=antmaze ALPHA=2.5 BC_COEF=0 TAU=1.0 OPTIMIZER=adam bash launch_job_slurm.sh
+
+# vis action
+TAG=extreme_action START=1 RUNS=1 TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 OPTIMIZER=adam bash launch_job_slurm.sh
+TAG=extreme_action START=1 RUNS=1 TASK=antmaze ALPHA=2.5 BC_COEF=0 TAU=1.0 OPTIMIZER=adam bash launch_job_slurm.sh
