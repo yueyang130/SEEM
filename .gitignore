@@ -1,0 +1,15 @@
+k8s
+# .gitignore
+Makefile
+# *.sh
+slurm_batch
+scripts
+*.yaml
+__pycache__
+results
+wandb
+.vscode
+weights
+DDPG_BC.py
+notebook.ipynb
+p220__Bairds_Counterexample.ipynb
