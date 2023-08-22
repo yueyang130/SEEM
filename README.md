@@ -9,15 +9,26 @@ Official code of the following paper:
 ![Alt text](images/antmaze.jpg)
 ![Alt text](images/mujoco.jpg)
 
-## SEEM Metrics and Mujoco
-Please checkout to `td3` branch by
+## SEEM Metrics
+Before you start, 
 ```
-git checkout td3
+cd td3
+```
+To produce observations about SEEM metrics in Figure 1, 3, 4, 15-20:
+```
+TAG=similarity_final_v2 START=1 RUNS=3 TASK=gym ALPHA=2.5 BC_COEF=0 TAU=1.0 OPTIMIZER=adam bash launch_job_slurm.sh
+TAG=similarity_final_v2 START=1 RUNS=3 TASK=antmaze ALPHA=2.5 BC_COEF=0 TAU=1.0 OPTIMIZER=adam bash launch_job_slurm.sh
 ```
 
+
+Note: If you want to run in local machines, just comment Line 44 in `scripts/launch_job_slurm.sh`. Create a directory namely `slurm_batch`. Then the generated commands will be stored in the directory `slurm_batch`. You can run the bash scripts locally.
 
 ## Antmaze
-Before you start, install Jax and dependencies by running
+Before you start, 
+```
+cd diff-QL
+```
+Install Jax and dependencies by running
 ```
 pip install -r requirements.txt
 ```
@@ -25,7 +36,6 @@ Next, we use SLURM gpu resource allocation system to lauch jobs. First, create a
 ```
 ALGO=diff-TD3 REW_SCALE=10.0 TASK=antmaze QF_LAYER_NORM=True bash scripts/launch_job_slurm.sh
 ```
-Note: If you want to run in local machines, just comment Line 44 in `scripts/launch_job_slurm.sh`.Create a directory namely `slurm_batch`. Then the generated commands will be stored in the directory `slurm_batch`. You can run the bash scripts locally.
 
 Note: You can reproduce the results without OPER-R in Table 2 by set `oper=False` and `two_sampler=False` in `diffusion/hps.py`.
 
@@ -42,6 +52,7 @@ This codebase can also log to [W&B online visualization platform](https://wandb.
 Alternatively, you could simply run `wandb login`.
 
 ## Credits
+Implementation of TD3 heavily borrows from this [PyTorch TD3+BC implementation](https://github.com/sfujim/TD3_BC).
 Implementation of Diffusion-QL heavily borrows from this [Jax Diffusion-QL implementation](https://github.com/sail-sg/edp/blob/main/README.md).
 
 

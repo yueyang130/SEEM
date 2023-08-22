@@ -6,7 +6,7 @@ slurm_batch
 scripts
 *.yaml
 __pycache__
-results
+results/*
 wandb
 .vscode
 weights

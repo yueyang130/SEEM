@@ -342,8 +342,7 @@ if __name__ == "__main__":
             q1_models.append(param1.cpu())
             
             ntk, batch_grads = compute_ntk(policy.critic, ntk_states, ntk_actions)
-            ntk_list.append(ntk.cpu())
-            
+            ntk_list.append(ntk.cpu())               
             fix_batch_grad, fix_batch_Q, fix_batch_max_Q, fix_batch_pi = policy.compute_grad(fix_batch)
             pi_sim_varying_state = cosine_similarity_matrix(fix_batch_pi).mean()
             random_batch_grad_list.append(random_batch_grad.cpu())
@@ -382,8 +381,8 @@ if __name__ == "__main__":
     print(fix_batch_pi)       
             
     # similarity between two vectors
-    # steps = [(t+1)*args.model_freq for t in range(len(q1_models))] 
-    # model_sim = [cosine_similarity(m, q1_models[-1]) for m in q1_models]
+    steps = [(t+1)*args.model_freq for t in range(len(q1_models))] 
+    model_sim = [cosine_similarity(m, q1_models[-1]) for m in q1_models]
     
     # similarity between two matrix
     flat_ntks = [torch.reshape(ntk, shape=(-1,)) for ntk in ntk_list]
@@ -397,40 +396,40 @@ if __name__ == "__main__":
     pi_sim_varying_step = [F.cosine_similarity(pi, pi_list[-1]).mean() for pi in pi_list]
 
     
-#     model_data = [[x, y] for (x, y) in zip(steps, model_sim)]
-#     table1 = wandb.Table(data=model_data, columns = ["steps", "similarity"])
-#     wandb.log(
-# {"cosine similarity of q1" : wandb.plot.line(table1, "steps", "similarity",
-#         title="cosine similarity of q1")})   
+    model_data = [[x, y] for (x, y) in zip(steps, model_sim)]
+    table1 = wandb.Table(data=model_data, columns = ["steps", "similarity"])
+    wandb.log(
+{"cosine similarity of q1" : wandb.plot.line(table1, "steps", "similarity",
+        title="cosine similarity of q1")})   
     
-#     ntk_data = [[x, y] for (x, y) in zip(steps, ntk_sim)]
-#     ntk_table = wandb.Table(data=ntk_data, columns = ["steps", "similarity"])
-#     wandb.log(
-# {"cosine similarity of ntk" : wandb.plot.line(ntk_table, "steps", "similarity",
-#         title="cosine similarity of ntk")})   
+    ntk_data = [[x, y] for (x, y) in zip(steps, ntk_sim)]
+    ntk_table = wandb.Table(data=ntk_data, columns = ["steps", "similarity"])
+    wandb.log(
+{"cosine similarity of ntk" : wandb.plot.line(ntk_table, "steps", "similarity",
+        title="cosine similarity of ntk")})   
     
-#     random_grad_data = [[x, y] for (x, y) in zip(steps, random_grad_sim)]
-#     random_grad_table = wandb.Table(data=random_grad_data, columns = ["steps", "similarity"])
-#     wandb.log(
-# {"cosine similarity of random batch grad" : wandb.plot.line(random_grad_table, "steps", "similarity",
-#         title="cosine similarity of random batch grad")})   
+    random_grad_data = [[x, y] for (x, y) in zip(steps, random_grad_sim)]
+    random_grad_table = wandb.Table(data=random_grad_data, columns = ["steps", "similarity"])
+    wandb.log(
+{"cosine similarity of random batch grad" : wandb.plot.line(random_grad_table, "steps", "similarity",
+        title="cosine similarity of random batch grad")})   
     
-#     fix_grad_data = [[x, y] for (x, y) in zip(steps, fix_grad_sim)]
-#     fix_grad_table = wandb.Table(data=fix_grad_data, columns = ["steps", "similarity"])
-#     wandb.log(
-# {"cosine similarity of fix batch grad" : wandb.plot.line(fix_grad_table, "steps", "similarity",
-#         title="cosine similarity of fix batch grad")})   
+    fix_grad_data = [[x, y] for (x, y) in zip(steps, fix_grad_sim)]
+    fix_grad_table = wandb.Table(data=fix_grad_data, columns = ["steps", "similarity"])
+    wandb.log(
+{"cosine similarity of fix batch grad" : wandb.plot.line(fix_grad_table, "steps", "similarity",
+        title="cosine similarity of fix batch grad")})   
     
-#     pi_sim_varying_data = [[x, y] for (x, y) in zip(steps, pi_sim_varying_step)]
-#     pi_sim_varying_table = wandb.Table(data=pi_sim_varying_data, columns = ["steps", "similarity"])
-#     wandb.log(
-# {"cosine similarity of pi with varying step" : wandb.plot.line(pi_sim_varying_table, "steps", "similarity",
-#         title="cosine similarity of pi with varying step")})   
+    pi_sim_varying_data = [[x, y] for (x, y) in zip(steps, pi_sim_varying_step)]
+    pi_sim_varying_table = wandb.Table(data=pi_sim_varying_data, columns = ["steps", "similarity"])
+    wandb.log(
+{"cosine similarity of pi with varying step" : wandb.plot.line(pi_sim_varying_table, "steps", "similarity",
+        title="cosine similarity of pi with varying step")})   
         
     wandb.finish() 
     
     torch.save({
-        # 'steps': steps,
+        'steps': steps,
         'q1_models': q1_models,
         'ntks': ntk_list,
         'random_batch_grad_list': random_batch_grad_list,
