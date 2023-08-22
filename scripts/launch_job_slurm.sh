@@ -40,7 +40,7 @@ for file in "${file_dir}/${file_prefix}"_*.sh; do
     fi
     echo "wait" >> "$file"
     chmod +x "$file"    
-#   srun -J offbench -N 1 -p $PARTITION -w $NODE --gres gpu:1 bash "$file" &
+  # comment this line to run locally
   srun -J offbench -N 1 -p $PARTITION --exclude=node09 --gres gpu:1 bash "$file" &
 done
 

@@ -3,7 +3,7 @@
 export WANDB_API_KEY=3e0863e2d8f819730b85529bd24b3ebbb96d0eb3
 
 TASK="${TASK:-gym}" # d4rl / antmaze / rl_unplugged
-ALPHA="${ALPHA:-0.25}"
+ALPHA="${ALPHA:-2.0}"
 GUIDE_COEF="${GUIDE_COEF:-0.0}"
 DIFF_COEF="${DIFF_COEF:-1.0}"
 

@@ -1,27 +1,49 @@
-# MISA
+# SEEM: Understanding, Predicting and Better Resolving Q-Value Divergence in Offline-RL
 
-Before you start, make sure to run
-```bash
-pip install -e .
+Official code of the following paper:
+
+[Understanding, Predicting and Better Resolving Q-Value Divergence in Offline-RL](TO BE FILLED).
+
+## Main Results
+![Alt text](images/seem-surge.jpg)
+![Alt text](images/antmaze.jpg)
+![Alt text](images/mujoco.jpg)
+
+## SEEM Metrics and Mujoco
+
+## Antmaze
+Before you start, install Jax and dependencies by running
+```
+pip install -r requirements.txt
+```
+Next, we use SLURM gpu resource allocation system to lauch jobs. If you want to run in local machines, just comment Line 44 in `scripts/launch_job_slurm.sh`. Then the generated commands will be stored in the directory namely `slurm_batch`. You can run the bash script to run locally.
+
+You can reproduce the results in Table 1 by running:
+```
+ALGO=diff-TD3 REW_SCALE=10.0 TASK=antmaze QF_LAYER_NORM=True bash scripts/launch_job_slurm.sh
+```
+Note: You can reproduce the results without OPER-R in Table 2 by set `oper=False` and `two_sampler=False` in `diffusion/hps.py`.
+
+You can run ablation study regarding LayerNorm in Table 5 by running:
+```
+ALGO=diff-TD3 REW_SCALE=10.0 TASK=antmaze QF_LAYER_NORM=True LAYER_NORM_INDEX=0 bash scripts/launch_job_slurm.sh
+ALGO=diff-TD3 REW_SCALE=10.0 TASK=antmaze QF_LAYER_NORM=True LAYER_NORM_INDEX=0,1 bash scripts/launch_job_slurm.sh
+...
 ```
 
-Apart from this, you'll have to setup your MuJoCo environment and key as well. Please follow [D4RL](https://github.com/Farama-Foundation/D4RL) repo and setup the environment accordingly.
-
-## Run Experiments
-
-You can run MISA experiments using the following command:
-```bash
-python -m experiments.main --env 'walker2d-medium-v2' --logging.output_dir './experiment_output'
-```
-
-To reproduce CRR, please run:
-```bash
-python -m experiments.main --logging.output_dir=./experiment_output --logging.online --algo=CRR --algo_cfg.avg_fn=mean --algo_cfg.crr_fn=exp --algo_cfg.crr_beta=1.0 --use_layer_norm=True --algo_cfg.q_weight_method=min --algo_cfg.use_expectile=True --algo_cfg.exp_tau=0.7 --n_epochs=2000
-```
 
 ## Weights and Biases Online Visualization Integration
 This codebase can also log to [W&B online visualization platform](https://wandb.ai/site). To log to W&B, you first need to set your W&B API key environment variable.
 Alternatively, you could simply run `wandb login`.
 
 ## Credits
-The project heavily borrows from this [Jax CQL implementation](https://github.com/young-geng/JaxCQL).
+Implementation of Diffusion-QL heavily borrows from this [Jax Diffusion-QL implementation](https://github.com/sail-sg/edp/blob/main/README.md).
+
+
+## Note
+The code in this repository has been reorganized. Errors that may arise during the organizing process could lead to code malfunctions or discrepancies from the original research results. If you encounter any problems, please raise issues. I will go and fix these bugs.
+
+## Bitex
+```
+TBD
+```
