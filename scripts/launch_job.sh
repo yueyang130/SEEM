@@ -41,7 +41,6 @@ DIFF_ANNEAL="${DIFF_ANNEAL:-False}"
 OPER="${OPER:-False}"
 TWO_SAMPLER="${TWO_SAMPLER:-False}"
 PRIORITY="${PRIORITY:-return}"
-DIST_RL="${DIST_RL:-False}"
 MAX_Q_BACKUP="${MAX_Q_BACKUP:-True}" # only for antmaze
 LB_RATE="${LB_RATE:-1}" # only for antmaze
 RESET_Q="${RESET_Q:-False}" # only for antmaze
@@ -85,7 +84,7 @@ then
 fi
 
 BASE_CMD="WANDB_API_KEY=$WANDB_API_KEY python -m diffusion.trainer --logging.output_dir=./experiment_output --logging.online --logging.notes=$NOTES --algo=${ALGO} --obs_norm=${OBS_NORM} --algo_cfg.loss_type=${LOSS_TYPE} --algo_cfg.use_expectile=${USE_EXPECTILE}   --algo_cfg.expectile_q=${EXPECTILE_Q} --sample_method=${SAMPLE_METHOD} --algo_cfg.crr_avg_fn=${AVG_FN} --algo_cfg.crr_fn=${CRR_FN} --algo_cfg.adv_norm=${ADV_NORM} --qf_layer_norm=${QF_LAYER_NORM} --layer_norm_index=$LAYER_NORM_INDEX --policy_layer_norm=${POLICY_LAYER_NORM} --algo_cfg.num_timesteps=${NUM_T} --norm_reward=${NORM_REW} --reward_scale=${REW_SCALE} --reward_bias=${REW_BIAS} --algo_cfg.lr_decay=${LR_DECAY} --algo_cfg.fixed_std=${FIXED_STD} --orthogonal_init=${ORTHOG_INIT} \
---algo_cfg.crr_weight_mode=$WEIGHT_MODE --algo_cfg.guide_coef=$GUIDE_COEF --algo_cfg.trust_region_target=${TRUST_REG} --algo_cfg.target_clip=$TARGET_CLIP --algo_cfg.MAX_Q=$MAX_Q  --algo_cfg.diff_coef=$DIFF_COEF  --algo_cfg.alpha=$ALPHA --algo_cfg.guide_warmup=${GUIDE_WARMUP} --oper=$OPER --two_sampler=$TWO_SAMPLER --priority=$PRIORITY --algo_cfg.use_dist_rl=$DIST_RL --algo_cfg.diff_annealing=$DIFF_ANNEAL --lb_rate=$LB_RATE --algo_cfg.reset_q=$RESET_Q --algo_cfg.reset_actor=$RESET_ACTOR --algo_cfg.reset_mode=$RESET_MODE --algo_cfg.reset_interval=$RESET_INTERVAL --algo_cfg.max_tgt_q=$MAX_TGT_Q  --algo_cfg.weight_decay=$WEIGHT_DECAY --eas_temp=$EAS_TEMP --state_sigma=$STATE_SIGMA --action_sigma=$ACTION_SIGMA"
+--algo_cfg.crr_weight_mode=$WEIGHT_MODE --algo_cfg.guide_coef=$GUIDE_COEF --algo_cfg.trust_region_target=${TRUST_REG} --algo_cfg.target_clip=$TARGET_CLIP --algo_cfg.MAX_Q=$MAX_Q  --algo_cfg.diff_coef=$DIFF_COEF  --algo_cfg.alpha=$ALPHA --algo_cfg.guide_warmup=${GUIDE_WARMUP} --oper=$OPER --two_sampler=$TWO_SAMPLER --priority=$PRIORITY  --algo_cfg.diff_annealing=$DIFF_ANNEAL --lb_rate=$LB_RATE --algo_cfg.reset_q=$RESET_Q --algo_cfg.reset_actor=$RESET_ACTOR --algo_cfg.reset_mode=$RESET_MODE --algo_cfg.reset_interval=$RESET_INTERVAL --algo_cfg.max_tgt_q=$MAX_TGT_Q  --algo_cfg.weight_decay=$WEIGHT_DECAY --eas_temp=$EAS_TEMP --state_sigma=$STATE_SIGMA --action_sigma=$ACTION_SIGMA"
 
 
 
@@ -102,12 +101,9 @@ then
   #   echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --algo=${ALGO} --seed=${i} --env=${env}-v2 --n_epochs=2000 &"
   #   sleep 1
   # done
-  # for env in halfcheetah walker2d hopper
-  for env in halfcheetah
+  for env in halfcheetah walker2d hopper
   do
-  # for level in medium medium-replay medium-expert
-  # for level in medium medium-replay
-  for level in medium-replay
+  for level in medium medium-replay medium-expert
   do
     echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --algo=${ALGO} --seed=${i} --env=${env}-${level}-v2 --n_epochs=2000 &"
   done
@@ -119,10 +115,7 @@ elif [ "$TASK" = "rl_unplugged" ]; then
     sleep 1
   done
 elif [ "$TASK" = "antmaze" ]; then
-  # for level in umaze-v0 umaze-diverse-v0 medium-play-v0 medium-diverse-v0 large-play-v0 large-diverse-v0
-  for level in large-play-v0 large-diverse-v0
-  # for level in medium-play-v0 medium-diverse-v0 large-play-v0 large-diverse-v0
-  # for level in umaze-v0 umaze-diverse-v0 
+  for level in umaze-v0 umaze-diverse-v0 medium-play-v0 medium-diverse-v0 large-play-v0 large-diverse-v0
   do
     # echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --seed=${i}  --env=antmaze-${level} --eval_n_trajs=100 --eval_period=50 --n_epochs=2000 --algo_cfg.max_q_backup=$MAX_Q_BACKUP --algo_cfg.expectile=0.9 --algo_cfg.awr_temperature=$AWR_TEMP &"
     echo "CUDA_VISIBLE_DEVICES=$GPU ${BASE_CMD} --seed=${i}  --env=antmaze-${level} --eval_n_trajs=100 --eval_period=50 --algo_cfg.max_q_backup=$MAX_Q_BACKUP --algo_cfg.expectile=0.9 --algo_cfg.awr_temperature=$AWR_TEMP &"

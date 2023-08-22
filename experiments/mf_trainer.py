@@ -6,14 +6,6 @@ import numpy as np
 import tqdm
 from flax import linen as nn
 
-import algos
-from algos.model import (
-  DirectMappingPolicy,
-  FullyConnectedQFunction,
-  FullyConnectedVFunction,
-  SamplerPolicy,
-  TanhGaussianPolicy,
-)
 from core.core_api import Trainer
 from data import Dataset, DM2Gym, RandSampler, RLUPDataset, PrefetchBalancedSampler
 from experiments.constants import (
@@ -44,8 +36,6 @@ class MFTrainer(Trainer):
 
   def __init__(self, flags_def):
     self._cfgs = absl.flags.FLAGS
-    self._algo = getattr(algos, self._cfgs.algo)
-    self._algo_type = ALGO_MAP[self._cfgs.algo]
 
     self._variant = get_user_flags(self._cfgs, flags_def)
     for k, v in self._cfgs.algo_cfg.items():

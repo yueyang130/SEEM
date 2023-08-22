@@ -360,11 +360,11 @@ class DiffusionTrainer(MFTrainer):
       
       
     # setup sampler policy
-    dist2value_fn = self._agent.dist_agent.dist2value if self._cfgs.algo_cfg.use_dist_rl else lambda x: x
+    dist2value_fn = lambda x: x
     self._sampler_policy = SamplerPolicy(self._agent.policy, qf=self._agent.qf, dist2value=dist2value_fn)
 
   def _setup_qf(self):
-    qf_out_dim = self._cfgs.algo_cfg.num_atoms - 1 if self._cfgs.algo_cfg.use_dist_rl else 1
+    qf_out_dim = 1
     qf = Critic(
       self._observation_dim,
       self._action_dim,

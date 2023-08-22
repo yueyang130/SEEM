@@ -1,11 +1,8 @@
 from ml_collections import ConfigDict
 
-import algos
 from utilities.utils import WandBLogger, define_flags_with_default
 
 algo_cfg_default_collection = ConfigDict()
-for alg in algos.__all__:
-  algo_cfg_default_collection.update(getattr(algos, alg).get_default_config())
 
 FLAGS_DEF = define_flags_with_default(
   algo="TD3",

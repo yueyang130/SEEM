@@ -6,7 +6,6 @@ import jax
 import flax.linen as nn
 import jax.numpy as jnp
 
-from algos.model import multiple_action_q_function
 from utilities.jax_utils import extend_and_repeat
 from diffusion.dpm_solver import NoiseScheduleVP, DPM_Solver
 from diffusion.diffusion import (
@@ -18,6 +17,23 @@ import distrax
 def mish(x):
   return x * jnp.tanh(nn.softplus(x))
 
+def multiple_action_q_function(forward):
+
+  def wrapped(self, observations, actions, **kwargs):
+    multiple_actions = False
+    batch_size = observations.shape[0]
+    if actions.ndim == 3 and observations.ndim == 2:
+      multiple_actions = True
+      observations = extend_and_repeat(observations, 1, actions.shape[1])
+      observations = observations.reshape(-1, observations.shape[-1])
+      actions = actions.reshape(-1, actions.shape[-1])
+    q_values = forward(self, observations, actions, **kwargs)  # (batch_size * repeat, num_atoms)
+    if multiple_actions:
+      num_atoms = q_values.shape[-1]
+      q_values = q_values.reshape(batch_size, -1, num_atoms)
+    return q_values
+
+  return wrapped
 
 def sinusoidal_embedding(timesteps, dim, max_period=10000):
   """
