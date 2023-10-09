@@ -2,7 +2,10 @@
 
 Official code of the following paper:
 
-[Understanding, Predicting and Better Resolving Q-Value Divergence in Offline-RL](TO BE FILLED).
+[Understanding, Predicting and Better Resolving Q-Value Divergence in Offline-RL](https://arxiv.org/abs/2310.04411).  
+[Yang Yue](https://scholar.google.com/citations?user=tE1oVQ4AAAAJ&hl=zh-TW), [Rui Lu](https://lr32768.github.io/), [Bingyi Kang](https://scholar.google.com.sg/citations?user=NmHgX-wAAAAJ&hl=en), [Shiji Song](), [Gao Huang](http://www.gaohuang.net/)  
+$^1$ Department of Automation, BNRist, Tsinghua University $^2$ ByteDance
+
 
 ## Main Results
 ![Alt text](images/seem-surge.jpg)
@@ -61,5 +64,10 @@ The code in this repository has been reorganized. Errors that may arise during t
 
 ## Bitex
 ```
-TBD
+@proceedings{yue2023understanding,
+      title={Understanding, Predicting and Better Resolving Q-Value Divergence in Offline-RL}, 
+      author={Yang Yue and Rui Lu and Bingyi Kang and Shiji Song and Gao Huang},
+      booktitle={NeurIPS},
+      year={2023},
+}
 ```
