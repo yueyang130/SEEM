@@ -4,7 +4,9 @@ Official code of the following paper:
 
 [Understanding, Predicting and Better Resolving Q-Value Divergence in Offline-RL](https://arxiv.org/abs/2310.04411).  
 [Yang Yue](https://scholar.google.com/citations?user=tE1oVQ4AAAAJ&hl=zh-TW), [Rui Lu](https://lr32768.github.io/), [Bingyi Kang](https://scholar.google.com.sg/citations?user=NmHgX-wAAAAJ&hl=en), [Shiji Song](), [Gao Huang](http://www.gaohuang.net/)  
-$^1$ Department of Automation, BNRist, Tsinghua University $^2$ ByteDance
+$^1$ Department of Automation, BNRist, Tsinghua University $^2$ ByteDance Inc.
+
+## [Project Page](https://offrl-seem.github.io/)
 
 
 ## Main Results
