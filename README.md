@@ -1,6 +1,6 @@
 # SEEM: Understanding, Predicting and Better Resolving Q-Value Divergence in Offline-RL
 
-Official code of the following paper:
+Official code of the following paper (accepted by<span style="color:red"> *NeurIPS 2023*</span>):
 
 [Understanding, Predicting and Better Resolving Q-Value Divergence in Offline-RL](https://arxiv.org/abs/2310.04411).  
 [Yang Yue](https://scholar.google.com/citations?user=tE1oVQ4AAAAJ&hl=zh-TW), [Rui Lu](https://lr32768.github.io/), [Bingyi Kang](https://scholar.google.com.sg/citations?user=NmHgX-wAAAAJ&hl=en), [Shiji Song](), [Gao Huang](http://www.gaohuang.net/)  
